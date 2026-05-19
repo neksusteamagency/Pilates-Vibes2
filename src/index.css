@@ -1,0 +1,35 @@
+/* ─────────────────────────────────────────────────────────────
+   Fonts
+   ─────────────────────────────────────────────────────────────
+   The existing POS / Finance / Reports files reference
+   'Cormorant Garant' which is likely a typo for the real Google
+   font 'Cormorant Garamond'. We import Garamond and add a
+   @font-face alias so 'Cormorant Garant' resolves to the same
+   font without having to edit any of the existing files.
+   ───────────────────────────────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap');
+
+@font-face {
+  font-family: 'Cormorant Garant';
+  src: local('Cormorant Garamond');
+  font-display: swap;
+}
+
+* { box-sizing: border-box; }
+
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  background: #F5F0E8;
+  font-family: 'DM Sans', sans-serif;
+  color: #2A1A0E;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+a       { color: inherit; }
+button  { font-family: inherit; }
+input,
+select,
+textarea { font-family: inherit; }
