@@ -14,6 +14,15 @@
 <meta name="apple-mobile-web-app-title" content="Pilates Vibes" />
 
     <title>Pilates-Vibes</title>
+
+
+    <script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/service-worker.js').catch(() => {});
+    });
+  }
+</script>
   </head>
   <body>
     <div id="root"></div>
