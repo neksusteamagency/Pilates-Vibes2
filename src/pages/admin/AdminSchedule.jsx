@@ -6,6 +6,7 @@ import {
 import {
   weekDates, formatDateShort, formatTime,
   TIME_SLOTS, DAY_LABELS_SHORT, addDays, todayString,
+  addMinutes, CLASS_DURATION_MINUTES,
 } from '../../utils/dates';
 import { useClasses } from '../../hooks/useClasses';
 import { useTrainers } from '../../hooks/useTrainers';
@@ -25,11 +26,27 @@ export default function AdminSchedule() {
   const ops = useClasses({ startDate, endDate, trainerId: trainerId || undefined });
   const { trainers } = useTrainers();
 
-  // index classes by 'YYYY-MM-DD:HH:00'
-  const grid = useMemo(() => {
-    const m = {};
-    ops.classes.forEach(c => { m[`${c.date}:${c.time}`] = c; });
-    return m;
+  // Build two maps:
+  //   starts:    'date:time' → class object (class STARTS at that slot)
+  //   covers:    'date:time' → class object (slot is COVERED by a class
+  //                            that started earlier, e.g. 10:00 covered by
+  //                            a 9:30 class)
+  // Classes are 1h long, so a 9:30 class starts at 09:30 and covers 10:00.
+  const { starts, covers } = useMemo(() => {
+    const s = {};
+    const c = {};
+    ops.classes.forEach(cls => {
+      s[`${cls.date}:${cls.time}`] = cls;
+      // Compute the slot(s) the class covers beyond its starting slot.
+      // 1 hour at half-hour granularity = 2 slots total, so cover 1 extra slot.
+      const slotsToCover = CLASS_DURATION_MINUTES / 30 - 1; // = 1
+      let t = cls.time;
+      for (let i = 0; i < slotsToCover; i++) {
+        t = addMinutes(t, 30);
+        c[`${cls.date}:${t}`] = cls;
+      }
+    });
+    return { starts: s, covers: c };
   }, [ops.classes]);
 
   const selectedClass = selected ? ops.classes.find(c => c.id === selected) : null;
@@ -94,21 +111,31 @@ export default function AdminSchedule() {
             })}
 
             {/* Time rows */}
-            {TIME_SLOTS.map(time => (
-              <div key={time} style={{ display: 'contents' }}>
-                <div style={timeLabelCell()}>{formatTime(time)}</div>
-                {dates.map(d => {
-                  const c = grid[`${d}:${time}`];
-                  return (
-                    <ScheduleCell
-                      key={d + time}
-                      classRef={c}
-                      onClick={() => c ? setSelected(c.id) : setPicker({ date: d, time })}
-                    />
-                  );
-                })}
-              </div>
-            ))}
+            {TIME_SLOTS.map(time => {
+              const isHalfHour = time.endsWith(':30');
+              return (
+                <div key={time} style={{ display: 'contents' }}>
+                  <div style={timeLabelCell(isHalfHour)}>{formatTime(time)}</div>
+                  {dates.map(d => {
+                    const startingClass = starts[`${d}:${time}`];
+                    const coveringClass = covers[`${d}:${time}`];
+                    return (
+                      <ScheduleCell
+                        key={d + time}
+                        startingClass={startingClass}
+                        coveringClass={coveringClass}
+                        isHalfHour={isHalfHour}
+                        onClick={() => {
+                          if (startingClass)      setSelected(startingClass.id);
+                          else if (coveringClass) setSelected(coveringClass.id);
+                          else                    setPicker({ date: d, time });
+                        }}
+                      />
+                    );
+                  })}
+                </div>
+              );
+            })}
           </div>
         </Card>
       </div>
@@ -162,6 +189,7 @@ export default function AdminSchedule() {
         prefill={picker}
         onClose={() => setPicker(null)}
         ops={ops}
+        existingClasses={ops.classes}
       />
       <ClassDetailModal
         open={!!selectedClass}
@@ -180,7 +208,10 @@ export default function AdminSchedule() {
   );
 }
 
-function ScheduleCell({ classRef, onClick }) {
+function ScheduleCell({ startingClass, coveringClass, isHalfHour, onClick }) {
+  // A "covering" cell is one where a class is in progress but didn't start
+  // here — it started in the previous slot.
+  const classRef = startingClass || coveringClass;
   const isFull = classRef && (classRef.bookedCount || 0) >= (classRef.capacity || 6);
   const isCancelled = classRef?.status === 'cancelled';
 
@@ -191,12 +222,19 @@ function ScheduleCell({ classRef, onClick }) {
     else             { bg = '#EEF3E6'; border = '#B6C997'; textColor = '#4E6A2E'; }
   }
 
+  // For a covering cell, show a subtle continuation visual (no name/trainer
+  // repeated — they're already in the starting cell).
+  const showContent = !!startingClass;
+
   return (
     <div
       onClick={onClick}
       style={{
-        background: bg, border: `1px solid ${border}`,
-        margin: 2, padding: '8px 10px', minHeight: 64,
+        background: bg,
+        border: `1px solid ${border}`,
+        // Visual cue for the boundary between hour and half-hour rows
+        borderTopStyle: coveringClass ? 'dashed' : 'solid',
+        margin: 2, padding: '6px 10px', minHeight: 48,
         borderRadius: 6, cursor: 'pointer',
         fontSize: '0.78rem', color: textColor,
         display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
@@ -205,17 +243,23 @@ function ScheduleCell({ classRef, onClick }) {
       onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-1px)'; }}
       onMouseLeave={e => { e.currentTarget.style.transform = 'none'; }}
     >
-      {classRef ? (
+      {showContent ? (
         <>
-          <div style={{ fontWeight: 500, fontSize: '0.82rem' }}>{classRef.name}</div>
-          <div style={{ fontSize: '0.7rem', opacity: 0.85 }}>{classRef.trainer}</div>
-          <div style={{ fontSize: '0.7rem', fontWeight: 500 }}>
-            {classRef.bookedCount || 0}/{classRef.capacity || 6}{isCancelled && ' · cancelled'}
+          <div style={{ fontWeight: 500, fontSize: '0.82rem' }}>{startingClass.name}</div>
+          <div style={{ fontSize: '0.68rem', opacity: 0.85 }}>{startingClass.trainer}</div>
+          <div style={{ fontSize: '0.68rem', fontWeight: 500 }}>
+            {startingClass.bookedCount || 0}/{startingClass.capacity || 6}
+            {isCancelled && ' · cancelled'}
           </div>
         </>
+      ) : coveringClass ? (
+        // continuation cell — minimal label
+        <div style={{ fontSize: '0.68rem', opacity: 0.65, textAlign: 'center', marginTop: 8 }}>
+          ↑ continued
+        </div>
       ) : (
-        <div style={{ color: T.faint, textAlign: 'center', marginTop: 18 }}>
-          <Plus size={14} />
+        <div style={{ color: T.faint, textAlign: 'center', marginTop: 10 }}>
+          <Plus size={13} />
         </div>
       )}
     </div>
@@ -243,13 +287,14 @@ function headerCell() {
   };
 }
 
-function timeLabelCell() {
+function timeLabelCell(isHalfHour) {
   return {
     background:   T.bg,
-    padding:      '8px 6px',
+    padding:      '6px 6px',
     textAlign:    'center',
-    fontSize:     '0.74rem',
-    color:        T.muted,
+    fontSize:     isHalfHour ? '0.66rem' : '0.74rem',
+    color:        isHalfHour ? T.faint : T.muted,
+    fontWeight:   isHalfHour ? 400 : 500,
     borderRight:  `1px solid ${T.border}`,
     display: 'flex', alignItems: 'center', justifyContent: 'center',
   };
