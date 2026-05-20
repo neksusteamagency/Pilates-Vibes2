@@ -63,25 +63,40 @@ export default function AdminClients() {
             style={{ paddingLeft: 36 }}
           />
         </div>
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-          {FILTERS.map(f => {
-            const active = filter === f.value;
-            return (
-              <button
-                key={f.value}
-                onClick={() => setFilter(f.value)}
-                style={{
-                  border: `1px solid ${active ? T.primary : T.border}`,
-                  background: active ? T.primary : 'transparent',
-                  color:      active ? T.bg : T.muted,
-                  borderRadius: 100, padding: '5px 13px',
-                  fontSize: '0.8rem', cursor: 'pointer',
-                  fontFamily: T.sans,
-                }}
-              >{f.label}</button>
-            );
-          })}
-        </div>
+<div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+  {FILTERS.map(f => {
+    const active = filter === f.value;
+    const count =
+      f.value === 'all'    ? ops.clients.length :
+      f.value === 'unpaid' ? ops.clients.filter(c => c.pkg && !c.pkgPaid).length :
+                              ops.clients.filter(c => c.status === f.value).length;
+    return (
+      <button
+        key={f.value}
+        onClick={() => setFilter(f.value)}
+        style={{
+          border: `1px solid ${active ? T.primary : T.border}`,
+          background: active ? T.primary : 'transparent',
+          color:      active ? T.bg : T.muted,
+          borderRadius: 100, padding: '5px 13px',
+          fontSize: '0.8rem', cursor: 'pointer',
+          fontFamily: T.sans,
+          display: 'inline-flex', alignItems: 'center', gap: 6,
+        }}
+      >
+        {f.label}
+        <span style={{
+          background: active ? 'rgba(255,255,255,0.18)' : T.bg,
+          color:      active ? T.bg : T.muted,
+          padding: '1px 7px',
+          borderRadius: 100,
+          fontSize: '0.72rem',
+          fontWeight: 500,
+        }}>{count}</span>
+      </button>
+    );
+  })}
+</div>
       </Card>
 
       {/* Table */}

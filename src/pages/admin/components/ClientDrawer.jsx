@@ -298,10 +298,16 @@ function ActionsTab({ client, ops, customPackages }) {
 
   const allPackages = [...PRESET_PACKAGES, ...customPackages];
 
-  async function handleMarkPaid() {
-    const method = prompt('Payment method? Type "Cash" or "Whish":', 'Cash');
-    if (!method) return;
-    if (!['Cash', 'Whish'].includes(method)) { toast.error('Use Cash or Whish.'); return; }
+async function handleMarkPaid() {
+    const method = client.pkgPaymentMethod;
+    if (!method) {
+      toast.error('Please choose a payment method (Cash or Whish) first.');
+      return;
+    }
+    if (!['Cash', 'Whish'].includes(method)) {
+      toast.error('Invalid payment method.');
+      return;
+    }
     if (!confirm(`Mark $${client.pkgPrice ?? 0} as paid via ${method}? This logs income in Finance.`)) return;
     await wrap('Marked as paid. Income logged.', () => ops.markPackagePaid(client, method));
   }
