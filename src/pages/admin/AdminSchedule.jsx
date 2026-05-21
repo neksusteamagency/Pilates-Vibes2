@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { ChevronLeft, ChevronRight, Plus } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, PlusCircle } from 'lucide-react';
 import {
   PageHeader, Card, Button, Select, Badge, T,
 } from '../../components/ui';
@@ -18,6 +18,7 @@ export default function AdminSchedule() {
   const [trainerId,  setTrainerId]  = useState('');
   const [picker,     setPicker]     = useState(null); // { date, time } — opens AddClassModal
   const [selected,   setSelected]   = useState(null); // class id — opens ClassDetailModal
+  const [mobilePicker,  setMobilePicker]  = useState(null); // date string — opens time picker on mobile
 
   const dates     = useMemo(() => weekDates(weekAnchor), [weekAnchor]);
   const startDate = dates[0];
@@ -148,10 +149,29 @@ export default function AdminSchedule() {
             .sort((a, b) => a.time.localeCompare(b.time));
           return (
             <Card key={d} style={{ marginBottom: 12 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                 <h3 style={{ margin: 0, fontFamily: T.serif, fontSize: '1.2rem', color: T.primary }}>
                   {DAY_LABELS_SHORT[i]} {d.slice(5)}
                 </h3>
+                <button
+                  onClick={() => setMobilePicker(d)}
+                  style={{
+                    background: 'transparent',
+                    border: `1px solid ${T.border}`,
+                    color: T.primary,
+                    borderRadius: 8,
+                    padding: '5px 11px',
+                    fontSize: '0.78rem',
+                    fontFamily: T.sans,
+                    fontWeight: 500,
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 5,
+                  }}
+                >
+                  <PlusCircle size={13} /> Add class
+                </button>
               </div>
               {dayClasses.length === 0 ? (
                 <div style={{ color: T.faint, fontSize: '0.86rem' }}>No classes</div>
@@ -183,6 +203,20 @@ export default function AdminSchedule() {
           );
         })}
       </div>
+
+
+
+
+        <MobileTimePicker
+        date={mobilePicker}
+        onClose={() => setMobilePicker(null)}
+        onPick={(time) => {
+          setPicker({ date: mobilePicker, time });
+          setMobilePicker(null);
+        }}
+      />
+
+
 
       <AddClassModal
         open={!!picker}
@@ -298,4 +332,70 @@ function timeLabelCell(isHalfHour) {
     borderRight:  `1px solid ${T.border}`,
     display: 'flex', alignItems: 'center', justifyContent: 'center',
   };
+}
+
+
+
+
+function MobileTimePicker({ date, onClose, onPick }) {
+  if (!date) return null;
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 200,
+        background: 'rgba(61,35,20,0.45)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: 20,
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          background: T.card,
+          borderRadius: 16,
+          border: `1px solid ${T.border}`,
+          maxWidth: 400, width: '100%',
+          maxHeight: '80vh',
+          display: 'flex', flexDirection: 'column',
+          boxShadow: '0 10px 40px rgba(61,35,20,0.25)',
+        }}
+      >
+        <div style={{
+          padding: '18px 22px', borderBottom: `1px solid ${T.border}`,
+        }}>
+          <h2 style={{
+            margin: 0, fontFamily: T.serif, fontWeight: 500,
+            color: T.primary, fontSize: '1.35rem',
+          }}>Pick a time</h2>
+          <div style={{ fontSize: '0.84rem', color: T.muted, marginTop: 3 }}>
+            {date}
+          </div>
+        </div>
+        <div style={{
+          padding: 16, overflowY: 'auto', flex: 1,
+          display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8,
+        }}>
+          {TIME_SLOTS.map(time => (
+            <button
+              key={time}
+              onClick={() => onPick(time)}
+              style={{
+                padding: '10px 6px',
+                background: T.bg,
+                border: `1px solid ${T.border}`,
+                borderRadius: 8,
+                color: T.text,
+                fontSize: '0.9rem',
+                fontFamily: T.sans,
+                cursor: 'pointer',
+              }}
+            >
+              {formatTime(time)}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
 }
