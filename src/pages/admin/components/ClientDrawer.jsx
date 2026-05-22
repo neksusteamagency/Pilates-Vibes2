@@ -288,8 +288,11 @@ function HistoryTab({ client }) {
 function ActionsTab({ client, ops, customPackages }) {
   const [pkgModal,      setPkgModal]      = useState(false);
   const [discountInput, setDiscountInput] = useState(client.pkgDiscount ?? 0);
+  const [expiryInput,   setExpiryInput]   = useState(client.pkgExpiry || '');
+
 
   useEffect(() => { setDiscountInput(client.pkgDiscount ?? 0); }, [client.id, client.pkgDiscount]);
+ useEffect(() => { setExpiryInput(client.pkgExpiry || ''); }, [client.id, client.pkgExpiry]);
 
   const wrap = async (label, fn) => {
     try { await fn(); toast.success(label); }
@@ -368,6 +371,24 @@ async function handleMarkPaid() {
                 <option value="Cash">Cash</option>
                 <option value="Whish">Whish</option>
               </Select>
+            </Row>
+            <Row label="Expiry date">
+              <Input
+                type="date"
+                value={expiryInput}
+                onChange={e => setExpiryInput(e.target.value)}
+                style={{ width: 160 }}
+              />
+              <Button
+                variant="secondary"
+                icon={Calendar}
+                onClick={() => {
+                  if (!expiryInput) { toast.error('Pick a date first.'); return; }
+                  wrap('Expiry date updated.', () => ops.updateClient(client.id, { pkgExpiry: expiryInput }));
+                }}
+              >
+                Update
+              </Button>
             </Row>
           </>
         )}
