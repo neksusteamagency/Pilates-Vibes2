@@ -6,9 +6,9 @@ import { usePOSSales, usePOSProducts } from '../../hooks/usePOS';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 
-const EXPENSE_CATEGORIES = ['Trainer Payroll','Rent','Equipment','generator','internet','concierge','cleaning','Marketing','Other','POS Product'];
+const EXPENSE_CATEGORIES = ['Trainer Payment','Rent','Equipment','generator','internet','concierge','cleaning','Marketing','Other','POS Product'];
 const CATEGORY_COLORS    = { 
-  'Trainer Payroll':'#7C8C5E', 
+  'Trainer Payment':'#7C8C5E', 
   'Rent':'#A0673A', 
   'Equipment':'#C4AE8F', 
   'generator':'#3D2314',   
@@ -166,7 +166,7 @@ function EditEntryModal({ entry, onClose, onSave, onSaveProduct, isIncome, produ
               </div>
               <Field label="Category">
                 <select style={inp} value={form.productCategory} onChange={e => set('productCategory', e.target.value)}>
-                  {['Drinks','Snacks','Apparel','Equipment','Other'].map(c => <option key={c}>{c}</option>)}
+                  {['Drinks','Snacks','Apparel','Equipment','Socks','Other'].map(c => <option key={c}>{c}</option>)}
                 </select>
               </Field>
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
@@ -363,7 +363,7 @@ productName:'', productEmoji:'📦', productCategory:'Drinks', emojiOpen:false,
                   </div>
                   <Field label="Product Category">
                     <select style={inp} value={form.productCategory} onChange={e => set('productCategory', e.target.value)}>
-                      {['Drinks','Snacks','Apparel','Equipment'].map(c => <option key={c}>{c}</option>)}
+                      {['Drinks','Snacks','Apparel','Equipment','Socks'].map(c => <option key={c}>{c}</option>)}
                     </select>
                   </Field>
                 </>
@@ -448,6 +448,13 @@ export default function AdminFinance() {
   const [editingEntry, setEditingEntry] = useState(null);
   const [editIsIncome, setEditIsIncome] = useState(false);
 
+
+  // Filter state — kept inside the page so it resets when switching months
+  const [incomeMethodFilter,   setIncomeMethodFilter]   = useState('all');
+  const [incomeCategoryFilter, setIncomeCategoryFilter] = useState('all');
+  const [expenseFilterMode,    setExpenseFilterMode]    = useState('all');     // 'all' | 'category' | 'date' | 'method'
+  const [expenseFilterValue,   setExpenseFilterValue]   = useState('');         // category name / 'YYYY-MM-DD' / 'Cash'|'Whish'
+
   const currentMonth = format(new Date(), 'yyyy-MM');
   const { expenses, loading, fetchByMonth, addExpense, updateExpense, removeExpense, getMonthlyExpensesForMonth, getActualExpensesForMonth } = useExpenses();
   const { products, addProduct, restockProduct, updateProduct } = usePOSProducts();
@@ -464,6 +471,27 @@ export default function AdminFinance() {
   const actualExpenses  = getActualExpensesForMonth(expenses, currentMonth);
   const profit          = totalIncome + posIncomeValue - actualExpenses;
   const expenseItems    = expenses.filter(e => !e.isIncome);
+
+
+// Unique income categories present in this month's data (drives the chip list)
+  const incomeCategories = Array.from(new Set(incomeItems.map(e => e.category).filter(Boolean)));
+
+  // Apply income filters (BOTH method and category combine — AND logic)
+  const filteredIncomeItems = incomeItems.filter(e => {
+    if (incomeMethodFilter   !== 'all' && e.method   !== incomeMethodFilter)   return false;
+    if (incomeCategoryFilter !== 'all' && e.category !== incomeCategoryFilter) return false;
+    return true;
+  });
+
+  // Apply expense filter (ONE at a time)
+  const filteredExpenseItems = expenseItems.filter(e => {
+    if (expenseFilterMode === 'all')        return true;
+    if (expenseFilterMode === 'category')   return !expenseFilterValue || e.category === expenseFilterValue;
+    if (expenseFilterMode === 'date')       return !expenseFilterValue || e.date     === expenseFilterValue;
+    if (expenseFilterMode === 'method')     return !expenseFilterValue || e.method   === expenseFilterValue;
+    return true;
+  });
+
 
   const chartData = Array.from({ length: 6 }).map((_, i) => {
     const d = new Date(); d.setMonth(d.getMonth() - (5 - i));
@@ -561,25 +589,49 @@ export default function AdminFinance() {
             ))}
           </div>
 
-          <Card title="Service Income Log" action="Log Income" onAction={() => setShowIncModal(true)}>
+<Card title="Service Income Log" action="Log Income" onAction={() => setShowIncModal(true)}>
+            {/* Filters */}
+            <div style={{ padding:'12px 16px', borderBottom:'1px solid #E0D5C1', display:'flex', gap:18, alignItems:'center', flexWrap:'wrap' }}>
+              <div style={{ display:'flex', gap:6, alignItems:'center', flexWrap:'wrap' }}>
+                <span style={{ fontSize:'0.7rem', textTransform:'uppercase', letterSpacing:'0.08em', color:'#9C8470' }}>Method:</span>
+                {['all','Cash','Whish'].map(m => {
+                  const active = incomeMethodFilter === m;
+                  return (
+                    <button key={m} onClick={() => setIncomeMethodFilter(m)} style={{ padding:'4px 11px', borderRadius:100, fontSize:'0.74rem', fontFamily:"'DM Sans',sans-serif", fontWeight:500, cursor:'pointer', background: active ? '#3D2314':'transparent', color: active ? '#F5F0E8':'#6B5744', border:`1px solid ${active ? '#3D2314':'#E0D5C1'}` }}>{m==='all'?'All':m}</button>
+                  );
+                })}
+              </div>
+              {incomeCategories.length > 0 && (
+                <div style={{ display:'flex', gap:6, alignItems:'center', flexWrap:'wrap' }}>
+                  <span style={{ fontSize:'0.7rem', textTransform:'uppercase', letterSpacing:'0.08em', color:'#9C8470' }}>Category:</span>
+                  {['all', ...incomeCategories].map(c => {
+                    const active = incomeCategoryFilter === c;
+                    return (
+                      <button key={c} onClick={() => setIncomeCategoryFilter(c)} style={{ padding:'4px 11px', borderRadius:100, fontSize:'0.74rem', fontFamily:"'DM Sans',sans-serif", fontWeight:500, cursor:'pointer', background: active ? '#3D2314':'transparent', color: active ? '#F5F0E8':'#6B5744', border:`1px solid ${active ? '#3D2314':'#E0D5C1'}` }}>{c==='all'?'All':c}</button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
             {loading ? (
               <div style={{ padding:'32px', textAlign:'center', color:'#C4AE8F', fontSize:'0.88rem' }}>Loading…</div>
-            ) : incomeItems.length === 0 ? (
-              <div style={{ padding:'32px', textAlign:'center', color:'#9C8470', fontSize:'0.88rem' }}>No income logged yet.</div>
+            ) : filteredIncomeItems.length === 0 ? (
+              <div style={{ padding:'32px', textAlign:'center', color:'#9C8470', fontSize:'0.88rem' }}>{incomeItems.length === 0 ? 'No income logged yet.' : 'No income matches the current filters.'}</div>
             ) : (
               <table style={{ width:'100%', borderCollapse:'collapse' }}>
                 <thead><tr>{['Date','Description','Method','Amount',''].map(h=><th key={h} style={{ fontSize:'0.72rem', textTransform:'uppercase', letterSpacing:'0.1em', color:'#9C8470', padding:'10px 16px', textAlign:'left', borderBottom:'1.5px solid #E0D5C1', fontWeight:500 }}>{h}</th>)}</tr></thead>
                 <tbody>
-                  {incomeItems.map((inc, i) => (
+{filteredIncomeItems.map((inc, i) => (
                     <tr key={inc.id}
                       style={{ cursor:'default' }}
                       onMouseEnter={e => { e.currentTarget.style.background='#F5F0E8'; e.currentTarget.querySelector('.row-actions').style.opacity='1'; }}
                       onMouseLeave={e => { e.currentTarget.style.background='transparent'; e.currentTarget.querySelector('.row-actions').style.opacity='0'; }}>
-                      <td style={{ padding:'11px 16px', fontSize:'0.84rem', color:'#9C8470', borderBottom:i<incomeItems.length-1?'1px solid #E0D5C1':'none' }}>{inc.date}</td>
-                      <td style={{ padding:'11px 16px', fontSize:'0.88rem', fontWeight:500, color:'#2A1A0E', borderBottom:i<incomeItems.length-1?'1px solid #E0D5C1':'none' }}>{inc.description}</td>
-                      <td style={{ padding:'11px 16px', borderBottom:i<incomeItems.length-1?'1px solid #E0D5C1':'none' }}>{methodBadge(inc.method)}</td>
-                      <td style={{ padding:'11px 16px', borderBottom:i<incomeItems.length-1?'1px solid #E0D5C1':'none' }}><span style={{ fontFamily:"'Cormorant Garant',serif", fontSize:'1.05rem', fontWeight:500, color:'#4E6A2E' }}>+${Math.abs(inc.amount)}</span></td>
-                      <td style={{ padding:'11px 16px', borderBottom:i<incomeItems.length-1?'1px solid #E0D5C1':'none' }}>
+                      <td style={{ padding:'11px 16px', fontSize:'0.84rem', color:'#9C8470', borderBottom:i<filteredIncomeItems.length-1?'1px solid #E0D5C1':'none' }}>{inc.date}</td>
+                      <td style={{ padding:'11px 16px', fontSize:'0.88rem', fontWeight:500, color:'#2A1A0E', borderBottom:i<filteredIncomeItems.length-1?'1px solid #E0D5C1':'none' }}>{inc.description}</td>
+                      <td style={{ padding:'11px 16px', borderBottom:i<filteredIncomeItems.length-1?'1px solid #E0D5C1':'none' }}>{methodBadge(inc.method)}</td>
+                      <td style={{ padding:'11px 16px', borderBottom:i<filteredIncomeItems.length-1?'1px solid #E0D5C1':'none' }}><span style={{ fontFamily:"'Cormorant Garant',serif", fontSize:'1.05rem', fontWeight:500, color:'#4E6A2E' }}>+${Math.abs(inc.amount)}</span></td>
+                      <td style={{ padding:'11px 16px', borderBottom:i<filteredIncomeItems.length-1?'1px solid #E0D5C1':'none' }}>
                         <RowActions item={inc} onEdit={item => openEdit(item, true)} onDelete={handleDelete} />
                       </td>
                     </tr>
@@ -613,18 +665,68 @@ export default function AdminFinance() {
             </Card>
           </div>
 
-          <Card title="Expense Log" action="Log Expense" onAction={() => setShowExpModal(true)}>
+<Card title="Expense Log" action="Log Expense" onAction={() => setShowExpModal(true)}>
+            {/* Filter (one-at-a-time switcher) */}
+            <div style={{ padding:'12px 16px', borderBottom:'1px solid #E0D5C1', display:'flex', gap:10, alignItems:'center', flexWrap:'wrap' }}>
+              <span style={{ fontSize:'0.7rem', textTransform:'uppercase', letterSpacing:'0.08em', color:'#9C8470' }}>Filter by:</span>
+              <select
+                style={{ ...inp, width:'auto', padding:'6px 10px', fontSize:'0.82rem' }}
+                value={expenseFilterMode}
+                onChange={e => { setExpenseFilterMode(e.target.value); setExpenseFilterValue(''); }}
+              >
+                <option value="all">All</option>
+                <option value="category">Category</option>
+                <option value="date">Date</option>
+                <option value="method">Method</option>
+              </select>
+              {expenseFilterMode === 'category' && (
+                <select
+                  style={{ ...inp, width:'auto', padding:'6px 10px', fontSize:'0.82rem' }}
+                  value={expenseFilterValue}
+                  onChange={e => setExpenseFilterValue(e.target.value)}
+                >
+                  <option value="">— pick a category —</option>
+                  {EXPENSE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              )}
+              {expenseFilterMode === 'date' && (
+                <input
+                  type="date"
+                  style={{ ...inp, width:'auto', padding:'6px 10px', fontSize:'0.82rem' }}
+                  value={expenseFilterValue}
+                  onChange={e => setExpenseFilterValue(e.target.value)}
+                />
+              )}
+              {expenseFilterMode === 'method' && (
+                <select
+                  style={{ ...inp, width:'auto', padding:'6px 10px', fontSize:'0.82rem' }}
+                  value={expenseFilterValue}
+                  onChange={e => setExpenseFilterValue(e.target.value)}
+                >
+                  <option value="">— pick a method —</option>
+                  <option value="Cash">Cash</option>
+                  <option value="Whish">Whish</option>
+                </select>
+              )}
+              {expenseFilterMode !== 'all' && expenseFilterValue && (
+                <button
+                  onClick={() => { setExpenseFilterMode('all'); setExpenseFilterValue(''); }}
+                  style={{ padding:'4px 11px', borderRadius:100, fontSize:'0.74rem', fontFamily:"'DM Sans',sans-serif", fontWeight:500, cursor:'pointer', background:'transparent', color:'#A0673A', border:'1px solid #E0D5C1' }}
+                >Clear</button>
+              )}
+            </div>
+
             {loading ? (
               <div style={{ padding:'32px', textAlign:'center', color:'#C4AE8F', fontSize:'0.88rem' }}>Loading…</div>
-            ) : expenseItems.length === 0 ? (
-              <div style={{ padding:'32px', textAlign:'center', color:'#9C8470', fontSize:'0.88rem' }}>No expenses logged yet.</div>
+            ) : filteredExpenseItems.length === 0 ? (
+              <div style={{ padding:'32px', textAlign:'center', color:'#9C8470', fontSize:'0.88rem' }}>{expenseItems.length === 0 ? 'No expenses logged yet.' : 'No expenses match the current filter.'}</div>
             ) : (
               <table style={{ width:'100%', borderCollapse:'collapse' }}>
                 <thead>
                   <tr>{['Date','Category','Description','Method','Amount','Type',''].map(h=><th key={h} style={{ fontSize:'0.72rem', textTransform:'uppercase', letterSpacing:'0.1em', color:'#9C8470', padding:'10px 16px', textAlign:'left', borderBottom:'1.5px solid #E0D5C1', fontWeight:500 }}>{h}</th>)}</tr>
                 </thead>
                 <tbody>
-                  {expenseItems.map((exp, i) => {
+                  {filteredExpenseItems.map((exp, i) => {
                     let typeLabel = 'Normal';
                     if (exp.isLumpSum)     typeLabel = '💰 Lump Sum';
                     else if (exp.isAllocated)  typeLabel = '📅 Allocated';

@@ -16,14 +16,17 @@ export function buildWhatsAppLink(phone, message = '') {
 
 // ── Templated messages ──────────────────────────────────────────
 
-export function msgBookingConfirmation({ clientName, className, date, time, trainer }) {
-  return `Hi ${clientName}, this is ${STUDIO_NAME} confirming your booking:
+export function msgBookingConfirmation({ className, date, time, trainer, spots = 1 }) {
+  return `Hello beautiful 🩷
 
-📅 ${className}
-🗓️ ${formatDateLong(date)} at ${formatTime(time)}
-👤 Trainer: ${trainer}
+I'm just checking in to confirm your spot for the ${className} tomorrow ⏰ ${formatTime(time)} with ${trainer}
+👯 for ${spots} ${spots === 1 ? 'prs' : 'prs'}
 
-See you in class!`;
+Please remember to arrive at least 5 minutes early! And don't forget your grip socks 🧦! Or you can buy from our studio.
+
+*Quick reminder — cancellations need to be made at least 12 hours before class to avoid any penalties. 🙏*
+
+Have a nice day, beautiful ✨🩷`;
 }
 
 export function msgCancellationNotice({ clientName, className, date, time }) {
