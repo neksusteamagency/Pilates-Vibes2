@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, X, TrendingUp, TrendingDown, DollarSign, ChevronRight, AlertTriangle, ShoppingBag, Edit2, Trash2, Check } from 'lucide-react';
+import { Plus, X, TrendingUp, TrendingDown, DollarSign, ChevronLeft, ChevronRight, AlertTriangle, ShoppingBag, Edit2, Trash2, Check } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { useExpenses } from '../../hooks/useExpenses';
 import { usePOSSales, usePOSProducts } from '../../hooks/usePOS';
@@ -455,14 +455,31 @@ export default function AdminFinance() {
   const [expenseFilterMode,    setExpenseFilterMode]    = useState('all');     // 'all' | 'category' | 'date' | 'method'
   const [expenseFilterValue,   setExpenseFilterValue]   = useState('');         // category name / 'YYYY-MM-DD' / 'Cash'|'Whish'
 
-  const currentMonth = format(new Date(), 'yyyy-MM');
+const [currentMonth, setCurrentMonth] = useState(format(new Date(), 'yyyy-MM'));
   const { expenses, loading, fetchByMonth, addExpense, updateExpense, removeExpense, getMonthlyExpensesForMonth, getActualExpensesForMonth } = useExpenses();
   const { products, addProduct, restockProduct, updateProduct } = usePOSProducts();
   const { fetchSalesByRange, totalRevenue: posIncomeValue } = usePOSSales();
 
+  // Compute last day of the selected month so February etc. don't break
+  function monthEndDate(ym) {
+    const [y, m] = ym.split('-').map(Number);
+    const d = new Date(y, m, 0); // day 0 of next month = last day of current
+    return `${ym}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+  function shiftMonth(ym, delta) {
+    const [y, m] = ym.split('-').map(Number);
+    const d = new Date(y, m - 1 + delta, 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  }
+  function monthLabel(ym) {
+    const [y, m] = ym.split('-').map(Number);
+    return new Date(y, m - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  }
+  const isCurrentMonth = currentMonth === format(new Date(), 'yyyy-MM');
+
   useEffect(() => {
     fetchByMonth(currentMonth);
-    fetchSalesByRange(`${currentMonth}-01`, `${currentMonth}-31`);
+    fetchSalesByRange(`${currentMonth}-01`, monthEndDate(currentMonth));
   }, [currentMonth]);
 
   const incomeItems     = expenses.filter(e => e.isIncome);
@@ -517,8 +534,35 @@ export default function AdminFinance() {
     fetchByMonth(currentMonth);
   }
 
-  return (
+return (
     <div style={{ padding:'28px 32px 40px' }}>
+      {/* Month switcher */}
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, marginBottom:18, flexWrap:'wrap' }}>
+        <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+          <button
+            onClick={() => setCurrentMonth(m => shiftMonth(m, -1))}
+            style={{ background:'transparent', border:'1px solid #E0D5C1', borderRadius:8, padding:'8px 12px', cursor:'pointer', color:'#3D2314', display:'inline-flex', alignItems:'center', gap:5, fontFamily:"'DM Sans',sans-serif", fontSize:'0.82rem' }}
+          >
+            <ChevronLeft size={15} /> Prev
+          </button>
+          <div style={{ fontFamily:"'Cormorant Garant',serif", fontSize:'1.4rem', fontWeight:500, color:'#3D2314', minWidth:170, textAlign:'center' }}>
+            {monthLabel(currentMonth)}
+          </div>
+          <button
+            onClick={() => setCurrentMonth(m => shiftMonth(m, 1))}
+            style={{ background:'transparent', border:'1px solid #E0D5C1', borderRadius:8, padding:'8px 12px', cursor:'pointer', color:'#3D2314', display:'inline-flex', alignItems:'center', gap:5, fontFamily:"'DM Sans',sans-serif", fontSize:'0.82rem' }}
+          >
+            Next <ChevronRight size={15} />
+          </button>
+          {!isCurrentMonth && (
+            <button
+              onClick={() => setCurrentMonth(format(new Date(), 'yyyy-MM'))}
+              style={{ background:'transparent', border:'1px solid #E0D5C1', borderRadius:8, padding:'8px 12px', cursor:'pointer', color:'#A0673A', fontFamily:"'DM Sans',sans-serif", fontSize:'0.82rem' }}
+            >Today</button>
+          )}
+        </div>
+      </div>
+
       {/* Tab bar */}
       <div style={{ display:'flex', gap:0, marginBottom:22, background:'#FAF7F2', borderRadius:10, border:'1px solid #E0D5C1', overflow:'hidden', width:'fit-content' }}>
         {['overview','income','expenses'].map(t => (
