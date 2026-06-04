@@ -38,14 +38,17 @@ export default function Login() {
     }
   }, [pendingNav, authLoading, currentUser, role, location.state, navigate]);
 
-  // If the user lands on /login while already signed in, send them home
+// If the user lands on /login while already signed in, send them either to
+  // the page they were trying to reach, or to their home dashboard.
   useEffect(() => {
     if (authLoading) return;
     if (!currentUser || !role) return;
-    if (pendingNav) return; // login flow handles it
+    if (pendingNav) return; // manual login flow handles it
     const home = homeForRole(role);
-    if (home) navigate(home, { replace: true });
-  }, [authLoading, currentUser, role, navigate, pendingNav]);
+    const from = location.state?.from?.pathname;
+    const target = from && from !== '/' && from !== '/login' ? from : home;
+    if (target) navigate(target, { replace: true });
+  }, [authLoading, currentUser, role, navigate, pendingNav, location.state]);
 
   async function handleSubmit(e) {
     e.preventDefault();
