@@ -30,7 +30,7 @@ export function useWaitlist({ classId, statusFilter = 'pending' } = {}) {
   return { waitlist, loading };
 }
 
-export async function joinWaitlist({ classRef, client }) {
+export async function joinWaitlist({ classRef, client, addedBy = 'client' }) {
   const ref = await addDoc(collection(db, 'waitlist'), {
     classId:    classRef.id,
     clientId:   client.id,
@@ -38,6 +38,7 @@ export async function joinWaitlist({ classRef, client }) {
     date:       classRef.date,
     time:       classRef.time,
     status:     'pending',
+    addedBy,
     joinedAt:   serverTimestamp(),
   });
 

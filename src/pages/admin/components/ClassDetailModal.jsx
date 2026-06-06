@@ -11,7 +11,7 @@ import { db } from '../../../firebase/config';
 import { formatDateLong, formatTime, todayString, isClassStarted } from '../../../utils/dates';
 import { useBookings, bookClass, cancelBooking } from '../../../hooks/useBookings';
 import { useAttendance, markAttendance } from '../../../hooks/useAttendance';
-import { useWaitlist, approveWaitlist, rejectWaitlist } from '../../../hooks/useWaitlist';
+import { useWaitlist, approveWaitlist, rejectWaitlist, joinWaitlist } from '../../../hooks/useWaitlist';
 import { useTrainers } from '../../../hooks/useTrainers';
 import { useClients } from '../../../hooks/useClients';
 import { buildWhatsAppLink, msgBookingConfirmation } from '../../../utils/whatsapp';
@@ -362,6 +362,36 @@ function AddBookingTab({ classRef }) {
 // ── Waitlist tab ──────────────────────────────────────────────
 function WaitlistTab({ classRef }) {
   const { waitlist, loading } = useWaitlist({ classId: classRef.id });
+  const { clients } = useClients();
+  const [search, setSearch] = useState('');
+  const [busy,   setBusy]   = useState(false);
+
+  const today = todayString();
+  const waitlistedIds = new Set(waitlist.map(w => w.clientId));
+
+  // Eligible: not already on the waitlist, has an active package, not frozen/expired.
+  const eligible = useMemo(() => {
+    const s = search.trim().toLowerCase();
+    return clients.filter(c => {
+      if (waitlistedIds.has(c.id))                              return false;
+      if (!c.pkg)                                                return false;
+      if (c.isFrozen)                                            return false;
+      if (c.pkgExpiry && c.pkgExpiry < today)                    return false;
+      if (!c.pkgUnlimited && (c.pkgSessions ?? 0) <= 0)           return false;
+      if (s && !`${c.name || ''} ${c.phone || ''}`.toLowerCase().includes(s)) return false;
+      return true;
+    });
+  }, [clients, waitlistedIds, search, today]);
+
+  async function addToWaitlist(client) {
+    setBusy(true);
+    try {
+      await joinWaitlist({ classRef, client, addedBy: 'admin' });
+      toast.success(`${client.name} added to the waitlist.`);
+      setSearch('');
+    } catch (e) { toast.error(e.message); }
+    finally { setBusy(false); }
+  }
 
   async function approve(id) {
     if (!confirm('Approve this waitlist entry? A session will be deducted.')) return;
@@ -373,28 +403,83 @@ function WaitlistTab({ classRef }) {
     catch (e) { toast.error(e.message); }
   }
 
-  if (loading)          return <div style={{ color: T.faint, padding: 20 }}>Loading…</div>;
-  if (!waitlist.length) return <EmptyState icon={UserPlus} title="No waitlist entries" hint="When the class is full, clients can join the waitlist from their dashboard." />;
-
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-      {waitlist.map(w => (
-        <div key={w.id} style={{
-          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-          padding: '10px 12px', background: T.bg, borderRadius: 8,
-        }}>
-          <div>
-            <div style={{ fontSize: '0.92rem', fontWeight: 500, color: T.text }}>{w.clientName}</div>
-            <div style={{ fontSize: '0.76rem', color: T.faint }}>
-              Joined {w.joinedAt?.toDate ? w.joinedAt.toDate().toLocaleString() : '…'}
-            </div>
-          </div>
-          <div style={{ display: 'flex', gap: 6 }}>
-            <Button size="sm" variant="olive"  icon={Check}  onClick={() => approve(w.id)}>Approve</Button>
-            <Button size="sm" variant="danger" icon={XIcon} onClick={() => reject(w.id)}>Reject</Button>
-          </div>
+    <div>
+      {/* Add a client to the waitlist (admin) */}
+      <div style={{
+        background: T.bg, borderRadius: 10, padding: 12, marginBottom: 16,
+      }}>
+        <div style={{ fontSize: '0.82rem', color: T.muted, marginBottom: 8 }}>
+          Add a client to the waitlist
         </div>
-      ))}
+        <div style={{ position: 'relative', marginBottom: 8 }}>
+          <Search size={15} style={{ position: 'absolute', left: 12, top: 13, color: T.faint }} />
+          <Input
+            placeholder="Search by name or phone…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            style={{ paddingLeft: 36 }}
+          />
+        </div>
+
+        {search.trim() && (
+          eligible.length === 0 ? (
+            <div style={{ color: T.faint, fontSize: '0.82rem', padding: '8px 4px' }}>
+              No eligible clients matching "{search}".
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 200, overflowY: 'auto' }}>
+              {eligible.slice(0, 8).map(c => (
+                <div key={c.id} style={{
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  padding: '8px 12px', background: T.card, borderRadius: 8,
+                  border: `1px solid ${T.borderSoft}`,
+                }}>
+                  <div>
+                    <div style={{ fontSize: '0.88rem', fontWeight: 500, color: T.text }}>{c.name}</div>
+                    <div style={{ fontSize: '0.74rem', color: T.faint }}>
+                      {c.pkg} • {c.pkgUnlimited ? '∞' : `${c.pkgSessions} left`}
+                    </div>
+                  </div>
+                  <Button size="sm" icon={Check} onClick={() => addToWaitlist(c)} disabled={busy}>Add</Button>
+                </div>
+              ))}
+            </div>
+          )
+        )}
+      </div>
+
+      {/* Existing waitlist entries */}
+      {loading ? (
+        <div style={{ color: T.faint, padding: 20 }}>Loading…</div>
+      ) : !waitlist.length ? (
+        <EmptyState icon={UserPlus} title="No waitlist entries" hint="Use the search above to add a client, or wait for clients to join from their dashboard." />
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {waitlist.map(w => (
+            <div key={w.id} style={{
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              padding: '10px 12px', background: T.bg, borderRadius: 8,
+            }}>
+              <div>
+                <div style={{ fontSize: '0.92rem', fontWeight: 500, color: T.text, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  {w.clientName}
+                  {w.addedBy === 'admin' && (
+                    <Badge bg="#F0EAE3" fg={T.warm}>Added by admin</Badge>
+                  )}
+                </div>
+                <div style={{ fontSize: '0.76rem', color: T.faint }}>
+                  Joined {w.joinedAt?.toDate ? w.joinedAt.toDate().toLocaleString() : '…'}
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <Button size="sm" variant="olive"  icon={Check}  onClick={() => approve(w.id)}>Approve</Button>
+                <Button size="sm" variant="danger" icon={XIcon} onClick={() => reject(w.id)}>Reject</Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
