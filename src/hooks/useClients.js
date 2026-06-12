@@ -250,11 +250,31 @@ export function useClients() {
       updatedAt:        serverTimestamp(),
     });
   }
+async function removePackage(clientId) {
+    await updateDoc(doc(db, 'clients', clientId), {
+      pkg:                            null,
+      pkgSessions:                    0,
+      pkgTotalSessions:               0,
+      pkgExpiry:                      null,
+      pkgPurchaseDate:                null,
+      pkgPrice:                       0,
+      pkgDiscount:                    0,
+      pkgPaid:                        false,
+      pkgPaymentMethod:               null,
+      pkgBookingsBeforeVerification:  0,
+      pkgUnlimited:                   false,
+      isFrozen:                       false,
+      freezeStart:                    null,
+      freezeEnd:                      null,
+      status:                         'no-package',
+      updatedAt:                      serverTimestamp(),
+    });
+  }
 
   return {
     clients, loading, error,
     addClient, updateClient, removeClient,
-    assignPackage, selfAssignPackage, markPackagePaid,
+    assignPackage, selfAssignPackage, markPackagePaid, removePackage,
     freezePackage, unfreezePackage,
     conductSession, returnSession,
     setDiscount, setPaymentMethod,

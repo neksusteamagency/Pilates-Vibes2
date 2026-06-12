@@ -683,9 +683,18 @@ return (
                 </tbody>
               </table>
             )}
-            <div style={{ padding:'12px 16px', borderTop:'1.5px solid #E0D5C1', display:'flex', justifyContent:'flex-end', alignItems:'center', gap:8 }}>
-              <span style={{ fontSize:'0.78rem', color:'#9C8470', textTransform:'uppercase', letterSpacing:'0.08em' }}>Total Service Income</span>
-              <span style={{ fontFamily:"'Cormorant Garant',serif", fontSize:'1.4rem', fontWeight:500, color:'#3D2314' }}>${totalIncome.toLocaleString()}</span>
+<div style={{ padding:'12px 16px', borderTop:'1.5px solid #E0D5C1', display:'flex', justifyContent:'flex-end', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+              {(incomeMethodFilter !== 'all' || incomeCategoryFilter !== 'all') && (
+                <span style={{ fontSize:'0.78rem', color:'#9C8470' }}>
+                  (Full month: ${totalIncome.toLocaleString()})
+                </span>
+              )}
+              <span style={{ fontSize:'0.78rem', color:'#9C8470', textTransform:'uppercase', letterSpacing:'0.08em' }}>
+                {(incomeMethodFilter !== 'all' || incomeCategoryFilter !== 'all') ? 'Filtered Total' : 'Total Service Income'}
+              </span>
+              <span style={{ fontFamily:"'Cormorant Garant',serif", fontSize:'1.4rem', fontWeight:500, color:'#3D2314' }}>
+                ${filteredIncomeItems.reduce((s, e) => s + Math.abs(e.amount || 0), 0).toLocaleString()}
+              </span>
             </div>
           </Card>
         </div>
@@ -801,6 +810,19 @@ return (
                 </tbody>
               </table>
             )}
+            <div style={{ padding:'12px 16px', borderTop:'1.5px solid #E0D5C1', display:'flex', justifyContent:'flex-end', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+              {expenseFilterMode !== 'all' && expenseFilterValue && (
+                <span style={{ fontSize:'0.78rem', color:'#9C8470' }}>
+                  (All expenses: ${expenseItems.reduce((s, e) => s + (e.amount || 0), 0).toLocaleString()})
+                </span>
+              )}
+              <span style={{ fontSize:'0.78rem', color:'#9C8470', textTransform:'uppercase', letterSpacing:'0.08em' }}>
+                {expenseFilterMode !== 'all' && expenseFilterValue ? 'Filtered Total' : 'Total Expenses'}
+              </span>
+              <span style={{ fontFamily:"'Cormorant Garant',serif", fontSize:'1.4rem', fontWeight:500, color:'#3D2314' }}>
+                ${filteredExpenseItems.reduce((s, e) => s + (e.amount || 0), 0).toLocaleString()}
+              </span>
+            </div>
           </Card>
         </div>
       )}

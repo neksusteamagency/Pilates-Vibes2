@@ -324,13 +324,25 @@ async function handleMarkPaid() {
         {!client.pkg && <p style={{ color: T.faint, margin: '0 0 10px', fontSize: '0.86rem' }}>
           Assign a package to start tracking sessions.
         </p>}
-        <Row>
+<Row>
           <Button icon={Plus} onClick={() => setPkgModal(true)}>
             {client.pkg ? 'Change package' : 'Assign package'}
           </Button>
           {client.pkg && !client.pkgPaid && (
             <Button variant="olive" icon={CheckCircle} onClick={handleMarkPaid}>
               Mark as paid
+            </Button>
+          )}
+          {client.pkg && (
+            <Button
+              variant="danger"
+              icon={Trash2}
+              onClick={() => {
+                if (!confirm(`Remove ${client.name}'s package? This clears all session data and cannot be undone.`)) return;
+                wrap('Package removed.', () => ops.removePackage(client.id));
+              }}
+            >
+              Remove package
             </Button>
           )}
         </Row>

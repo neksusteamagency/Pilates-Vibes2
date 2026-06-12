@@ -1,6 +1,6 @@
-import { useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, CartesianGrid, PieChart, Pie, Cell } from 'recharts';
-import { Star, TrendingUp, Users, Award, DollarSign, ShoppingBag } from 'lucide-react';
+import { Star, TrendingUp, Users, Award, DollarSign, ShoppingBag, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useStats } from '../../hooks/useStats';
 import { useClients } from '../../hooks/useClients';
 import { useTrainers } from '../../hooks/useTrainers';
@@ -42,12 +42,23 @@ function Stars({ rating }) {
 const PACKAGE_COLORS = ['#3D2314','#A0673A','#7C8C5E','#C4AE8F'];
 
 export default function AdminReports() {
-  const currentMonth = format(new Date(), 'yyyy-MM');
+  const [currentMonth, setCurrentMonth] = useState(format(new Date(), 'yyyy-MM'));
   const { stats, loading, fetchStats } = useStats();
   const { clients }  = useClients();
   const { trainers } = useTrainers();
 
   useEffect(() => { fetchStats(currentMonth); }, [currentMonth]);
+
+  function shiftMonth(ym, delta) {
+    const [y, m] = ym.split('-').map(Number);
+    const d = new Date(y, m - 1 + delta, 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  }
+  function monthLabel(ym) {
+    const [y, m] = ym.split('-').map(Number);
+    return new Date(y, m - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  }
+  const isCurrentMonth = currentMonth === format(new Date(), 'yyyy-MM');
 
   // Package distribution from real clients
   const pkgCounts = clients.reduce((acc, c) => {
@@ -96,6 +107,32 @@ export default function AdminReports() {
 
   return (
     <div style={{ padding:'28px 32px 40px' }}>
+
+
+          {/* Month switcher */}
+      <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:18, flexWrap:'wrap' }}>
+        <button
+          onClick={() => setCurrentMonth(m => shiftMonth(m, -1))}
+          style={{ background:'transparent', border:'1px solid #E0D5C1', borderRadius:8, padding:'8px 12px', cursor:'pointer', color:'#3D2314', display:'inline-flex', alignItems:'center', gap:5, fontFamily:"'DM Sans',sans-serif", fontSize:'0.82rem' }}
+        >
+          <ChevronLeft size={15} /> Prev
+        </button>
+        <div style={{ fontFamily:"'Cormorant Garant',serif", fontSize:'1.4rem', fontWeight:500, color:'#3D2314', minWidth:170, textAlign:'center' }}>
+          {monthLabel(currentMonth)}
+        </div>
+        <button
+          onClick={() => setCurrentMonth(m => shiftMonth(m, 1))}
+          style={{ background:'transparent', border:'1px solid #E0D5C1', borderRadius:8, padding:'8px 12px', cursor:'pointer', color:'#3D2314', display:'inline-flex', alignItems:'center', gap:5, fontFamily:"'DM Sans',sans-serif", fontSize:'0.82rem' }}
+        >
+          Next <ChevronRight size={15} />
+        </button>
+        {!isCurrentMonth && (
+          <button
+            onClick={() => setCurrentMonth(format(new Date(), 'yyyy-MM'))}
+            style={{ background:'transparent', border:'1px solid #E0D5C1', borderRadius:8, padding:'8px 12px', cursor:'pointer', color:'#A0673A', fontFamily:"'DM Sans',sans-serif", fontSize:'0.82rem' }}
+          >Today</button>
+        )}
+      </div>
 
       {/* KPI row — 6 cards */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(6,1fr)', gap:14, marginBottom:22 }} className="rep-6">
