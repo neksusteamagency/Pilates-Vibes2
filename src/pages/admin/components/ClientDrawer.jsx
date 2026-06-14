@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   collection, query, where, orderBy, onSnapshot, doc, getDoc,
 } from 'firebase/firestore';
@@ -197,6 +197,7 @@ function ProfileTab({ client, ops }) {
           </div>
           <Mini label="Sessions left">{client.pkgUnlimited ? '∞ unlimited' : client.pkgSessions}</Mini>
           <Mini label="Total sessions">{client.pkgUnlimited ? '—' : client.pkgTotalSessions}</Mini>
+          <Mini label="Purchased">{client.pkgPurchaseDate || '—'}</Mini>
           <Mini label="Expires">{client.pkgExpiry || '—'}</Mini>
           <Mini label="Payment">
             {client.pkgPaid
@@ -254,32 +255,107 @@ function HistoryTab({ client }) {
     return () => unsub();
   }, [client.id]);
 
+  // Group bookings by month 'YYYY-MM'
+  const grouped = useMemo(() => {
+    const map = {};
+    bookings.forEach(b => {
+      const month = b.date?.slice(0, 7);
+      if (!month) return;
+      if (!map[month]) map[month] = [];
+      map[month].push(b);
+    });
+    // Sort months descending
+    return Object.entries(map).sort((a, b) => b[0].localeCompare(a[0]));
+  }, [bookings]);
+
+  function monthLabel(ym) {
+    const [y, m] = ym.split('-').map(Number);
+    return new Date(y, m - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  }
+
   if (loading)          return <div style={{ color: T.faint, padding: 20 }}>Loading…</div>;
   if (!bookings.length) return <EmptyState icon={Calendar} title="No bookings yet" />;
 
   return (
     <div style={{ paddingTop: 8 }}>
-      {bookings.map(b => (
-        <div key={b.id} style={{
-          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-          padding: '12px 0', borderBottom: `1px solid ${T.borderSoft}`,
-        }}>
-          <div>
-            <div style={{ fontSize: '0.92rem', color: T.text, fontWeight: 500 }}>
-              {formatDateLong(b.date)}
+
+
+
+      {/* Month groups */}
+      {grouped.map(([month, monthBookings]) => {
+        const confirmed  = monthBookings.filter(b => b.status !== 'cancelled');
+        const cancelled  = monthBookings.filter(b => b.status === 'cancelled');
+        return (
+          <div key={month} style={{ marginBottom: 22 }}>
+
+            {/* Month header */}
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: 8,
+              paddingBottom: 6,
+              borderBottom: `2px solid ${T.border}`,
+            }}>
+              <div style={{
+                fontFamily: T.serif,
+                fontSize: '1.15rem',
+                fontWeight: 500,
+                color: T.primary,
+              }}>
+                {monthLabel(month)}
+              </div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <Badge bg="#EEF3E6" fg={T.olive}>
+                  {confirmed.length} session{confirmed.length === 1 ? '' : 's'}
+                </Badge>
+                {cancelled.length > 0 && (
+                  <Badge bg="#F5DDDD" fg={T.danger}>
+                    {cancelled.length} cancelled
+                  </Badge>
+                )}
+              </div>
             </div>
-            <div style={{ fontSize: '0.78rem', color: T.faint }}>
-              {formatTime(b.time)}
+
+            {/* Bookings in this month */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              {monthBookings.map(b => {
+                const isCancelled = b.status === 'cancelled';
+                return (
+                  <div key={b.id} style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    padding: '10px 12px',
+                    borderRadius: 8,
+                    background: isCancelled ? 'transparent' : T.bg,
+                    opacity: isCancelled ? 0.45 : 1,
+                    gap: 10,
+                  }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{
+                        fontSize: '0.9rem',
+                        fontWeight: isCancelled ? 400 : 500,
+                        color: T.text,
+                        textDecoration: isCancelled ? 'line-through' : 'none',
+                        marginBottom: 2,
+                      }}>
+                        {b.className || b.name || 'Class'}
+                      </div>
+                      <div style={{ fontSize: '0.76rem', color: T.faint }}>
+                        {formatDateLong(b.date)} · {formatTime(b.time)}
+                      </div>
+                    </div>
+                    {isCancelled && (
+                      <Badge bg="#F5DDDD" fg={T.danger}>Cancelled</Badge>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
-          <Badge
-            bg={b.status === 'cancelled' ? '#F5DDDD' : '#EEF3E6'}
-            fg={b.status === 'cancelled' ? T.danger : T.olive}
-          >
-            {b.status}
-          </Badge>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -368,7 +444,7 @@ async function handleMarkPaid() {
                 onChange={e => setDiscountInput(e.target.value)}
                 style={{ width: 100 }}
               />
-              <Button variant="secondary" icon={Percent} onClick={() => wrap('Discount updated.', () => ops.setDiscount(client, Number(discountInput) || 0))}>
+              <Button variant="secondary"  onClick={() => wrap('Discount updated.', () => ops.setDiscount(client, Number(discountInput) || 0))}>
                 Apply
               </Button>
             </Row>

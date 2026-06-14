@@ -535,20 +535,22 @@ const [currentMonth, setCurrentMonth] = useState(format(new Date(), 'yyyy-MM'));
   }
 
 return (
-    <div style={{ padding:'28px 32px 40px' }}>
+    <div className="fin-root" style={{ padding:'28px 32px 40px' }}>
       {/* Month switcher */}
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, marginBottom:18, flexWrap:'wrap' }}>
         <div style={{ display:'flex', alignItems:'center', gap:10 }}>
           <button
+            className="fin-month-btn"
             onClick={() => setCurrentMonth(m => shiftMonth(m, -1))}
             style={{ background:'transparent', border:'1px solid #E0D5C1', borderRadius:8, padding:'8px 12px', cursor:'pointer', color:'#3D2314', display:'inline-flex', alignItems:'center', gap:5, fontFamily:"'DM Sans',sans-serif", fontSize:'0.82rem' }}
           >
             <ChevronLeft size={15} /> Prev
           </button>
-          <div style={{ fontFamily:"'Cormorant Garant',serif", fontSize:'1.4rem', fontWeight:500, color:'#3D2314', minWidth:170, textAlign:'center' }}>
+          <div className="fin-month-label" style={{ fontFamily:"'Cormorant Garant',serif", fontSize:'1.4rem', fontWeight:500, color:'#3D2314', minWidth:170, textAlign:'center' }}>
             {monthLabel(currentMonth)}
           </div>
           <button
+            className="fin-month-btn"
             onClick={() => setCurrentMonth(m => shiftMonth(m, 1))}
             style={{ background:'transparent', border:'1px solid #E0D5C1', borderRadius:8, padding:'8px 12px', cursor:'pointer', color:'#3D2314', display:'inline-flex', alignItems:'center', gap:5, fontFamily:"'DM Sans',sans-serif", fontSize:'0.82rem' }}
           >
@@ -556,6 +558,7 @@ return (
           </button>
           {!isCurrentMonth && (
             <button
+              className="fin-month-btn"
               onClick={() => setCurrentMonth(format(new Date(), 'yyyy-MM'))}
               style={{ background:'transparent', border:'1px solid #E0D5C1', borderRadius:8, padding:'8px 12px', cursor:'pointer', color:'#A0673A', fontFamily:"'DM Sans',sans-serif", fontSize:'0.82rem' }}
             >Today</button>
@@ -564,7 +567,7 @@ return (
       </div>
 
       {/* Tab bar */}
-      <div style={{ display:'flex', gap:0, marginBottom:22, background:'#FAF7F2', borderRadius:10, border:'1px solid #E0D5C1', overflow:'hidden', width:'fit-content' }}>
+      <div className="fin-tabs" style={{ display:'flex', gap:0, marginBottom:22, background:'#FAF7F2', borderRadius:10, border:'1px solid #E0D5C1', overflow:'hidden', width:'fit-content' }}>
         {['overview','income','expenses'].map(t => (
           <button key={t} onClick={() => setActiveTab(t)} style={{ padding:'9px 20px', background: activeTab===t ? '#3D2314':'transparent', color: activeTab===t ? '#F5F0E8':'#6B5744', border:'none', cursor:'pointer', fontFamily:"'DM Sans',sans-serif", fontSize:'0.84rem', fontWeight: activeTab===t?500:400, textTransform:'capitalize', transition:'all 0.18s' }}>{t}</button>
         ))}
@@ -620,7 +623,7 @@ return (
       {/* INCOME */}
       {activeTab === 'income' && (
         <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:14 }}>
+          <div className="fin-income-kpi" style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:14 }}>
             {[
               { label:'Service Income', value:`$${totalIncome.toLocaleString()}`,                  color:'#7C8C5E', bg:'#EEF3E6' },
               { label:'POS Income',     value:`$${posIncomeValue.toLocaleString()}`,               color:'#A0673A', bg:'#F5F1E0' },
@@ -663,7 +666,7 @@ return (
             ) : filteredIncomeItems.length === 0 ? (
               <div style={{ padding:'32px', textAlign:'center', color:'#9C8470', fontSize:'0.88rem' }}>{incomeItems.length === 0 ? 'No income logged yet.' : 'No income matches the current filters.'}</div>
             ) : (
-              <table style={{ width:'100%', borderCollapse:'collapse' }}>
+              <table className="fin-table" style={{ width:'100%', borderCollapse:'collapse' }}>
                 <thead><tr>{['Date','Description','Method','Amount',''].map(h=><th key={h} style={{ fontSize:'0.72rem', textTransform:'uppercase', letterSpacing:'0.1em', color:'#9C8470', padding:'10px 16px', textAlign:'left', borderBottom:'1.5px solid #E0D5C1', fontWeight:500 }}>{h}</th>)}</tr></thead>
                 <tbody>
 {filteredIncomeItems.map((inc, i) => (
@@ -671,10 +674,10 @@ return (
                       style={{ cursor:'default' }}
                       onMouseEnter={e => { e.currentTarget.style.background='#F5F0E8'; e.currentTarget.querySelector('.row-actions').style.opacity='1'; }}
                       onMouseLeave={e => { e.currentTarget.style.background='transparent'; e.currentTarget.querySelector('.row-actions').style.opacity='0'; }}>
-                      <td style={{ padding:'11px 16px', fontSize:'0.84rem', color:'#9C8470', borderBottom:i<filteredIncomeItems.length-1?'1px solid #E0D5C1':'none' }}>{inc.date}</td>
-                      <td style={{ padding:'11px 16px', fontSize:'0.88rem', fontWeight:500, color:'#2A1A0E', borderBottom:i<filteredIncomeItems.length-1?'1px solid #E0D5C1':'none' }}>{inc.description}</td>
-                      <td style={{ padding:'11px 16px', borderBottom:i<filteredIncomeItems.length-1?'1px solid #E0D5C1':'none' }}>{methodBadge(inc.method)}</td>
-                      <td style={{ padding:'11px 16px', borderBottom:i<filteredIncomeItems.length-1?'1px solid #E0D5C1':'none' }}><span style={{ fontFamily:"'Cormorant Garant',serif", fontSize:'1.05rem', fontWeight:500, color:'#4E6A2E' }}>+${Math.abs(inc.amount)}</span></td>
+                      <td data-label="Date" style={{ padding:'11px 16px', fontSize:'0.84rem', color:'#9C8470', borderBottom:i<filteredIncomeItems.length-1?'1px solid #E0D5C1':'none' }}>{inc.date}</td>
+                      <td data-label="Description" style={{ padding:'11px 16px', fontSize:'0.88rem', fontWeight:500, color:'#2A1A0E', borderBottom:i<filteredIncomeItems.length-1?'1px solid #E0D5C1':'none' }}>{inc.description}</td>
+                      <td data-label="Method" style={{ padding:'11px 16px', borderBottom:i<filteredIncomeItems.length-1?'1px solid #E0D5C1':'none' }}>{methodBadge(inc.method)}</td>
+                      <td data-label="Amount" style={{ padding:'11px 16px', borderBottom:i<filteredIncomeItems.length-1?'1px solid #E0D5C1':'none' }}><span style={{ fontFamily:"'Cormorant Garant',serif", fontSize:'1.05rem', fontWeight:500, color:'#4E6A2E' }}>+${Math.abs(inc.amount)}</span></td>
                       <td style={{ padding:'11px 16px', borderBottom:i<filteredIncomeItems.length-1?'1px solid #E0D5C1':'none' }}>
                         <RowActions item={inc} onEdit={item => openEdit(item, true)} onDelete={handleDelete} />
                       </td>
@@ -703,7 +706,7 @@ return (
       {/* EXPENSES */}
       {activeTab === 'expenses' && (
         <div>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14, marginBottom:16 }}>
+          <div className="fin-exp-cards" style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14, marginBottom:16 }}>
             <Card title="Monthly Expenses (Cash Basis)">
               <div style={{ padding:'20px', textAlign:'center' }}>
                 <div style={{ fontSize:'0.78rem', color:'#9C8470', marginBottom:8 }}>What actually left your bank this month</div>
@@ -774,7 +777,7 @@ return (
             ) : filteredExpenseItems.length === 0 ? (
               <div style={{ padding:'32px', textAlign:'center', color:'#9C8470', fontSize:'0.88rem' }}>{expenseItems.length === 0 ? 'No expenses logged yet.' : 'No expenses match the current filter.'}</div>
             ) : (
-              <table style={{ width:'100%', borderCollapse:'collapse' }}>
+              <table className="fin-table" style={{ width:'100%', borderCollapse:'collapse' }}>
                 <thead>
                   <tr>{['Date','Category','Description','Method','Amount','Type',''].map(h=><th key={h} style={{ fontSize:'0.72rem', textTransform:'uppercase', letterSpacing:'0.1em', color:'#9C8470', padding:'10px 16px', textAlign:'left', borderBottom:'1.5px solid #E0D5C1', fontWeight:500 }}>{h}</th>)}</tr>
                 </thead>
@@ -788,19 +791,19 @@ return (
                       <tr key={exp.id}
                         onMouseEnter={e => { e.currentTarget.style.background='#F5F0E8'; e.currentTarget.querySelector('.row-actions').style.opacity='1'; }}
                         onMouseLeave={e => { e.currentTarget.style.background='transparent'; e.currentTarget.querySelector('.row-actions').style.opacity='0'; }}>
-                        <td style={{ padding:'11px 16px', fontSize:'0.84rem', color:'#9C8470', borderBottom: i<expenseItems.length-1?'1px solid #E0D5C1':'none' }}>{exp.date}</td>
-                        <td style={{ padding:'11px 16px', borderBottom: i<expenseItems.length-1?'1px solid #E0D5C1':'none' }}>
+                        <td data-label="Date" style={{ padding:'11px 16px', fontSize:'0.84rem', color:'#9C8470', borderBottom: i<expenseItems.length-1?'1px solid #E0D5C1':'none' }}>{exp.date}</td>
+                        <td data-label="Category" style={{ padding:'11px 16px', borderBottom: i<expenseItems.length-1?'1px solid #E0D5C1':'none' }}>
                           <div style={{ display:'flex', alignItems:'center', gap:7 }}>
                             <span style={{ width:9, height:9, borderRadius:'50%', background: CATEGORY_COLORS[exp.category] || '#9C8470', display:'inline-block', flexShrink:0 }}/>
                             <span style={{ fontSize:'0.84rem', fontWeight:500, color:'#2A1A0E' }}>{exp.category}</span>
                           </div>
                         </td>
-                        <td style={{ padding:'11px 16px', fontSize:'0.84rem', color:'#6B5744', borderBottom: i<expenseItems.length-1?'1px solid #E0D5C1':'none' }}>{exp.description}</td>
-                        <td style={{ padding:'11px 16px', borderBottom: i<expenseItems.length-1?'1px solid #E0D5C1':'none' }}>{methodBadge(exp.method)}</td>
-                        <td style={{ padding:'11px 16px', borderBottom: i<expenseItems.length-1?'1px solid #E0D5C1':'none' }}>
+                        <td data-label="Description" style={{ padding:'11px 16px', fontSize:'0.84rem', color:'#6B5744', borderBottom: i<expenseItems.length-1?'1px solid #E0D5C1':'none' }}>{exp.description}</td>
+                        <td data-label="Method" style={{ padding:'11px 16px', borderBottom: i<expenseItems.length-1?'1px solid #E0D5C1':'none' }}>{methodBadge(exp.method)}</td>
+                        <td data-label="Amount" style={{ padding:'11px 16px', borderBottom: i<expenseItems.length-1?'1px solid #E0D5C1':'none' }}>
                           <span style={{ fontFamily:"'Cormorant Garant',serif", fontSize:'1.05rem', fontWeight:500, color: exp.isLumpSum ? '#8C3A3A' : '#A0673A' }}>${exp.amount}</span>
                         </td>
-                        <td style={{ padding:'11px 16px', fontSize:'0.7rem', borderBottom: i<expenseItems.length-1?'1px solid #E0D5C1':'none' }}>{typeLabel}</td>
+                        <td data-label="Type" style={{ padding:'11px 16px', fontSize:'0.7rem', borderBottom: i<expenseItems.length-1?'1px solid #E0D5C1':'none' }}>{typeLabel}</td>
                         <td style={{ padding:'11px 16px', borderBottom: i<expenseItems.length-1?'1px solid #E0D5C1':'none' }}>
                           <RowActions item={exp} onEdit={item => openEdit(item, false)} onDelete={handleDelete} />
                         </td>
@@ -833,9 +836,81 @@ return (
 
       <style>{`
         .row-actions { transition: opacity 0.15s; }
+
+        /* ── Overview KPI grid ── */
         @media (max-width:1100px) { .fin-resp { grid-template-columns: repeat(3,1fr) !important; } }
         @media (max-width:750px)  { .fin-resp { grid-template-columns: repeat(2,1fr) !important; } }
         @media (max-width:500px)  { .fin-resp { grid-template-columns: 1fr !important; } }
+
+        /* ── Main page padding ── */
+        @media (max-width:600px) { .fin-root { padding: 16px 14px 32px !important; } }
+
+        /* ── Month switcher ── */
+        @media (max-width:480px) {
+          .fin-month-label { font-size: 1.1rem !important; min-width: 130px !important; }
+          .fin-month-btn   { padding: 6px 8px !important; font-size: 0.78rem !important; }
+        }
+
+        /* ── Tab bar: full-width on mobile ── */
+        @media (max-width:480px) {
+          .fin-tabs { width: 100% !important; }
+          .fin-tabs button { flex: 1; padding: 9px 8px !important; font-size: 0.78rem !important; }
+        }
+
+        /* ── Income 3-col KPI grid ── */
+        @media (max-width:600px) { .fin-income-kpi { grid-template-columns: 1fr !important; } }
+
+        /* ── Expense 2-col card grid ── */
+        @media (max-width:600px) { .fin-exp-cards { grid-template-columns: 1fr !important; } }
+
+        /* ════════════════════════════════════
+           TABLE → CARD on mobile
+           On screens ≤ 640 px we hide the
+           <thead> and turn each <tr> into a
+           stacked card via display:block.
+           ════════════════════════════════════ */
+        @media (max-width:640px) {
+          /* hide the header row */
+          .fin-table thead { display: none; }
+
+          /* each row becomes a card */
+          .fin-table tbody tr {
+            display: block !important;
+            margin: 10px 12px !important;
+            border: 1px solid #E0D5C1 !important;
+            border-radius: 10px !important;
+            padding: 10px 12px !important;
+            background: #FAF7F2 !important;
+          }
+
+          /* each cell becomes a labelled row */
+          .fin-table tbody td {
+            display: flex !important;
+            justify-content: space-between !important;
+            align-items: center !important;
+            padding: 5px 4px !important;
+            border-bottom: none !important;
+            font-size: 0.82rem !important;
+          }
+
+          /* pseudo-element label from data-label attr */
+          .fin-table tbody td[data-label]::before {
+            content: attr(data-label);
+            font-size: 0.68rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: #9C8470;
+            font-weight: 500;
+            flex-shrink: 0;
+            margin-right: 8px;
+          }
+
+          /* hide empty action header cell */
+          .fin-table tbody td:last-child:empty { display: none !important; }
+
+          /* always show row actions on touch (no hover) */
+          .fin-table .row-actions { opacity: 1 !important; }
+        }
       `}</style>
     </div>
   );
