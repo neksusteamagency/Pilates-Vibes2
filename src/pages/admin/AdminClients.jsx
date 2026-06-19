@@ -7,7 +7,7 @@ import {
 import { useClients } from '../../hooks/useClients';
 import { useCustomPackages } from '../../hooks/usePackages';
 import { formatPhone, isValidLebanesePhone } from '../../utils/phone';
-import { statusLabel, statusColors } from '../../utils/status';
+import { computeClientStatus, statusLabel, statusColors } from '../../utils/status';
 import ClientDrawer from './components/ClientDrawer';
 
 const FILTERS = [
@@ -38,8 +38,7 @@ export default function AdminClients() {
       }
       if (filter === 'all')    return true;
       if (filter === 'unpaid') return c.pkg && !c.pkgPaid;
-      return c.status === filter;
-    });
+      return computeClientStatus(c) === filter;    });
   }, [ops.clients, search, filter]);
 
   const selectedClient = open ? ops.clients.find(c => c.id === open) : null;
@@ -69,7 +68,7 @@ export default function AdminClients() {
     const count =
       f.value === 'all'    ? ops.clients.length :
       f.value === 'unpaid' ? ops.clients.filter(c => c.pkg && !c.pkgPaid).length :
-                              ops.clients.filter(c => c.status === f.value).length;
+                             ops.clients.filter(c => computeClientStatus(c) === f.value).length;
     return (
       <button
         key={f.value}
@@ -136,7 +135,7 @@ export default function AdminClients() {
                   <Td>{c.pkg || <span style={{ color: T.faint }}>—</span>}</Td>
                   <Td>{!c.pkg ? '—' : c.pkgUnlimited ? '∞' : c.pkgSessions}</Td>
                   <Td style={{ color: T.muted }}>{c.pkgExpiry || '—'}</Td>
-                  <Td><Badge {...statusColors(c.status)}>{statusLabel(c.status)}</Badge></Td>
+                  <Td><Badge {...statusColors(computeClientStatus(c))}>{statusLabel(computeClientStatus(c))}</Badge></Td>
                   <Td>
                     {!c.pkg ? '—' :
                       c.pkgPaid ? <Badge bg="#EEF3E6" fg={T.olive}>{c.pkgPaymentMethod}</Badge>

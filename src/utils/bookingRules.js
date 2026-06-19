@@ -11,6 +11,19 @@ const UNPAID_BOOKING_LIMIT         = 1;             // can book this many times 
 const CLIENT_SELF_CUTOFF_MINUTES   = 60;            // <1h before class: client can't self-book
 
 export function checkBookingEligibility({ client, classRef, isClientSelf = false }) {
+
+
+  // 🔍 TEMP DEBUG — remove after testing
+  console.log('[DEBUG pkgExpiry]', {
+    pkgExpiry: client?.pkgExpiry,
+    type: typeof client?.pkgExpiry,
+    isDate: client?.pkgExpiry instanceof Date,
+    hasToDate: typeof client?.pkgExpiry?.toDate === 'function',
+    today: todayString(),
+  });
+
+
+
   // ── Class-side checks ───────────────────────────────────────
   if (!classRef) return fail('Class not found.');
   if (classRef.status === 'cancelled') return fail('This class has been cancelled.');

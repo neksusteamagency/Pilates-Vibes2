@@ -13,7 +13,7 @@ import { db } from '../../firebase/config';
 import { useAuth } from '../../contexts/AuthContext';
 import { useClients } from '../../hooks/useClients';
 import { formatPhone } from '../../utils/phone';
-import { statusLabel, statusColors } from '../../utils/status';
+import { computeClientStatus, statusLabel, statusColors } from '../../utils/status';
 import { CLIENT_SELECTABLE_PACKAGES } from '../../utils/packages';
 
 export default function ClientProfile() {
@@ -71,8 +71,8 @@ export default function ClientProfile() {
 
       {/* Status banner */}
       <div style={{ marginBottom: 22 }}>
-        <Badge {...statusColors(client.status)} style={{ padding: '6px 14px', fontSize: '0.86rem' }}>
-          {statusLabel(client.status)}
+        <Badge {...statusColors(computeClientStatus(client))} style={{ padding: '6px 14px', fontSize: '0.86rem' }}>
+         {statusLabel(computeClientStatus(client))}
         </Badge>
       </div>
 
