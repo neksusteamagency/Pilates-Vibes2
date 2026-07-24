@@ -15,7 +15,7 @@ export const PRESET_PACKAGES = [
   { id: 'single',    name: 'Single Class',       sessions: 1,  price: 15,  durationDays: 30, preset: true },
   { id: '4pack',     name: '4-Pack',             sessions: 4,  price: 55,  durationDays: 30, preset: true },
   { id: '8pack',     name: '8-Pack',             sessions: 8,  price: 95,  durationDays: 30, preset: true },
-  { id: '12pack',    name: '12-Pack',            sessions: 12, price: 130, durationDays: 30, preset: true },
+  { id: '12pack',    name: '12-Pack',            sessions: 12, price: 130, durationDays: 45, preset: true },
   {
     id:           'unlimited',
     name:         'Monthly Unlimited',
