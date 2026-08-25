@@ -14,6 +14,7 @@ const FILTERS = [
   { value: 'all',        label: 'All' },
   { value: 'active',     label: 'Active' },
   { value: 'low',        label: 'Low sessions' },
+    { value: 'depleted',   label: '0 sessions' },
   { value: 'expiring',   label: 'Expiring soon' },
   { value: 'expired',    label: 'Expired' },
   { value: 'frozen',     label: 'Frozen' },

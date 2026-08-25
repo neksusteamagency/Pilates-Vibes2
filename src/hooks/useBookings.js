@@ -62,10 +62,12 @@ export async function bookClass({ classId, client, bookedBy = 'admin' }) {
     if (!cli.pkgUnlimited && (cli.pkgSessions ?? 0) <= 0)
                          throw new Error('Client has no sessions left.');
 
-    const bookingRef = doc(collection(db, 'bookings'));
+            const bookingRef = doc(collection(db, 'bookings'));
     tx.set(bookingRef, {
       classId, clientId: client.id, clientName: cli.name,
+      className: c.name,
       date: c.date, time: c.time, status: 'confirmed',
+      packageInstanceId: cli.currentPackageInstanceId || null,
       bookedAt: serverTimestamp(), bookedBy,
     });
 

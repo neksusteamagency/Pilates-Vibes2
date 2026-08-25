@@ -1,13 +1,37 @@
 import { useState, useEffect } from 'react';
 import {
   collection, onSnapshot, query, orderBy,
-  doc, addDoc, updateDoc, deleteDoc, getDoc,
+  doc, addDoc, updateDoc, deleteDoc, getDoc, setDoc,
   serverTimestamp,
 } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { computeClientStatus, computeExpiry, todayString } from '../utils/status';
 import { normalizePhone } from '../utils/phone';
 import { isClientSelectable, getPresetByName } from '../utils/packages';
+
+
+// Snapshot the client's current package into clients/{id}/packageHistory
+// before assignPackage/removePackage overwrites it. Keeps sessions, paid
+// status, dates — everything — tied to that specific package instance.
+async function archiveCurrentPackage(clientId, cli, endReason) {
+  if (!cli.pkg) return; // nothing to archive
+  const instanceId = cli.currentPackageInstanceId
+    || doc(collection(db, 'clients', clientId, 'packageHistory')).id;
+  await setDoc(doc(db, 'clients', clientId, 'packageHistory', instanceId), {
+    pkg:              cli.pkg,
+    pkgTotalSessions: cli.pkgTotalSessions ?? 0,
+    pkgSessionsLeft:  cli.pkgUnlimited ? null : (cli.pkgSessions ?? 0),
+    pkgUnlimited:     !!cli.pkgUnlimited,
+    pkgPrice:         cli.pkgPrice ?? 0,
+    pkgDiscount:      cli.pkgDiscount ?? 0,
+    pkgPaid:          !!cli.pkgPaid,
+    pkgPaymentMethod: cli.pkgPaymentMethod || null,
+    pkgPurchaseDate:  cli.pkgPurchaseDate || null,
+    pkgExpiry:        cli.pkgExpiry || null,
+    endReason, // 'renewed' | 'removed'
+    archivedAt: serverTimestamp(),
+  });
+}
 
 export function useClients() {
   const [clients, setClients] = useState([]);
@@ -82,6 +106,13 @@ export function useClients() {
     const discount = opts.discount || 0;
     const price    = Math.max(0, (pkg.price || 0) - discount);
 
+    const snap = await getDoc(doc(db, 'clients', clientId));
+    const cli  = snap.exists() ? snap.data() : {};
+
+    // Archive whatever package they had before this overwrites it
+    await archiveCurrentPackage(clientId, cli, 'renewed');
+    const newInstanceId = doc(collection(db, 'clients', clientId, 'packageHistory')).id;
+
     const merge = {
       pkg:                            pkg.name,
       pkgSessions:                    pkg.sessions || 0,
@@ -97,8 +128,8 @@ export function useClients() {
       isFrozen:                       false,
       freezeStart:                    null,
       freezeEnd:                      null,
+      currentPackageInstanceId:       newInstanceId,
     };
-    const snap = await getDoc(doc(db, 'clients', clientId));
     if (snap.exists()) {
       merge.status = computeClientStatus({ ...snap.data(), ...merge });
     }
@@ -133,6 +164,9 @@ export function useClients() {
     const today  = todayString();
     const expiry = computeExpiry(today, preset.durationDays || 30);
 
+     const newInstanceId = doc(collection(db, 'clients', clientId, 'packageHistory')).id;
+
+
     const merge = {
       pkg:                            preset.name,
       pkgSessions:                    preset.sessions || 0,
@@ -148,6 +182,7 @@ export function useClients() {
       isFrozen:                       false,
       freezeStart:                    null,
       freezeEnd:                      null,
+       currentPackageInstanceId:       newInstanceId,
     };
     merge.status = computeClientStatus({ ...cli, ...merge });
 
@@ -182,6 +217,37 @@ export function useClients() {
       updatedAt:        serverTimestamp(),
     });
   }
+
+
+    // Mark an ARCHIVED (past/renewed) package as paid — for packages that
+  // were renewed over before payment was collected.
+  async function markPackageHistoryPaid(clientId, instanceId, method) {
+    if (!['Cash', 'Whish'].includes(method)) throw new Error('Invalid payment method.');
+    const ref  = doc(db, 'clients', clientId, 'packageHistory', instanceId);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) throw new Error('Package record not found.');
+    const h = snap.data();
+    if (h.pkgPaid) throw new Error('Already marked as paid.');
+
+    const clientSnap = await getDoc(doc(db, 'clients', clientId));
+    const clientName = clientSnap.exists() ? clientSnap.data().name : '';
+    const today = todayString();
+
+    await addDoc(collection(db, 'expenses'), {
+      isIncome:    true,
+      category:    'Membership',
+      amount:      h.pkgPrice || 0,
+      method,
+      date:        today,
+      month:       today.slice(0, 7),
+      description: `${clientName} — ${h.pkg} (past package)`,
+      clientId,
+      createdAt:   serverTimestamp(),
+    });
+
+    await updateDoc(ref, { pkgPaid: true, pkgPaymentMethod: method });
+  }
+
 
   async function freezePackage(clientId) {
     await updateDoc(doc(db, 'clients', clientId), {
@@ -218,20 +284,34 @@ export function useClients() {
     await updateDoc(doc(db, 'clients', client.id), merge);
   }
 
-  async function conductSession(client) {
+    async function conductSession(client, note = '') {
     if (!client.pkg)         throw new Error('Client has no package.');
     if (client.pkgUnlimited) return;
     if ((client.pkgSessions ?? 0) <= 0) throw new Error('No sessions left.');
     const merge = { pkgSessions: client.pkgSessions - 1 };
     merge.status = computeClientStatus({ ...client, ...merge });
     await updateDoc(doc(db, 'clients', client.id), { ...merge, updatedAt: serverTimestamp() });
+    await addDoc(collection(db, 'clients', client.id, 'sessionAdjustments'), {
+      type: 'conduct',
+      note: note || '',
+      pkg:  client.pkg,
+      packageInstanceId: client.currentPackageInstanceId || null,
+      createdAt: serverTimestamp(),
+    });
   }
 
-  async function returnSession(client) {
+  async function returnSession(client, note = '') {
     if (client.pkgUnlimited) return;
     const merge = { pkgSessions: (client.pkgSessions || 0) + 1 };
     merge.status = computeClientStatus({ ...client, ...merge });
     await updateDoc(doc(db, 'clients', client.id), { ...merge, updatedAt: serverTimestamp() });
+    await addDoc(collection(db, 'clients', client.id, 'sessionAdjustments'), {
+      type: 'return',
+      note: note || '',
+      pkg:  client.pkg,
+      packageInstanceId: client.currentPackageInstanceId || null,
+      createdAt: serverTimestamp(),
+    });
   }
 
   async function setDiscount(client, discount) {
@@ -250,7 +330,11 @@ export function useClients() {
       updatedAt:        serverTimestamp(),
     });
   }
-async function removePackage(clientId) {
+  async function removePackage(clientId) {
+    const snap = await getDoc(doc(db, 'clients', clientId));
+    const cli  = snap.exists() ? snap.data() : {};
+    await archiveCurrentPackage(clientId, cli, 'removed');
+
     await updateDoc(doc(db, 'clients', clientId), {
       pkg:                            null,
       pkgSessions:                    0,
@@ -267,6 +351,7 @@ async function removePackage(clientId) {
       freezeStart:                    null,
       freezeEnd:                      null,
       status:                         'no-package',
+      currentPackageInstanceId:       null,
       updatedAt:                      serverTimestamp(),
     });
   }
@@ -274,7 +359,7 @@ async function removePackage(clientId) {
   return {
     clients, loading, error,
     addClient, updateClient, removeClient,
-    assignPackage, selfAssignPackage, markPackagePaid, removePackage,
+    assignPackage, selfAssignPackage, markPackagePaid, markPackageHistoryPaid, removePackage,
     freezePackage, unfreezePackage,
     conductSession, returnSession,
     setDiscount, setPaymentMethod,

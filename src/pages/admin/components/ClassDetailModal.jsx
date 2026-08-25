@@ -190,8 +190,15 @@ function BookingRow({ booking, attendance, onMark, onCancel, classRef, canMark }
       display: 'flex', justifyContent: 'space-between', alignItems: 'center',
       gap: 10, flexWrap: 'wrap',
     }}>
-      <div style={{ flex: 1, minWidth: 140 }}>
-        <div style={{ fontWeight: 500, fontSize: '0.92rem', color: T.text }}>{booking.clientName}</div>
+        <div style={{ flex: 1, minWidth: 140 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
+          <span style={{ fontWeight: 500, fontSize: '0.92rem', color: T.text }}>{booking.clientName}</span>
+          {client?.pkg && (
+            client.pkgPaid
+              ? <Badge bg="#EEF3E6" fg={T.olive}>Paid</Badge>
+              : <Badge bg="#F5DDDD" fg={T.danger}>Unpaid</Badge>
+          )}
+        </div>
         <div style={{ fontSize: '0.78rem', color: T.faint }}>
           {client ? `${client.pkgUnlimited ? '∞' : client.pkgSessions} sess remaining` : '…'}
         </div>

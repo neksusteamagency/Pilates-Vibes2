@@ -14,7 +14,7 @@ import { useAttendance } from '../../hooks/useAttendance';
 import {
   formatTime, todayString, addDays, isClassStarted, weekDates,
 } from '../../utils/dates';
-import { statusLabel, statusColors } from '../../utils/status';
+import { computeClientStatus, statusLabel, statusColors } from '../../utils/status';
 
 export default function AdminOverview() {
   const { profile } = useAuth();
@@ -57,12 +57,12 @@ export default function AdminOverview() {
     : Math.round((weekAttendedCount / weekAttendanceTotal) * 100);
 
   // ── Client metrics ────────────────────────────────────────────
-  const activeClients   = clients.filter(c => c.status === 'active');
-  const lowClients      = clients.filter(c => c.status === 'low');
-  const expiringClients = clients.filter(c => c.status === 'expiring');
-  const expiredClients  = clients.filter(c => c.status === 'expired');
-  const frozenClients   = clients.filter(c => c.status === 'frozen');
-  const unpaidClients   = clients.filter(c => c.pkg && !c.pkgPaid);
+const activeClients   = clients.filter(c => computeClientStatus(c) === 'active');
+const lowClients      = clients.filter(c => computeClientStatus(c) === 'low');
+const expiringClients = clients.filter(c => computeClientStatus(c) === 'expiring');
+const expiredClients  = clients.filter(c => computeClientStatus(c) === 'expired');
+const frozenClients   = clients.filter(c => computeClientStatus(c) === 'frozen');
+const unpaidClients   = clients.filter(c => c.pkg && !c.pkgPaid);
 
   // Most-recent signups (clients with no package OR very new)
   const recentClients = useMemo(() =>

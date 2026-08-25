@@ -6,7 +6,7 @@ import { usePOSSales, usePOSProducts } from '../../hooks/usePOS';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 
-const EXPENSE_CATEGORIES = ['Trainer Payment','Rent','Equipment','generator','internet','concierge','cleaning','Marketing','Other','POS Product'];
+const EXPENSE_CATEGORIES = ['Trainer Payment','Rent','Equipment','generator','edl','internet','concierge','cleaning','Marketing','Other','POS Product'];
 const CATEGORY_COLORS    = { 
   'Trainer Payment':'#7C8C5E', 
   'Rent':'#A0673A', 

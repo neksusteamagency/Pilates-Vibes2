@@ -16,9 +16,10 @@ export function computeClientStatus(client) {
     if (daysLeft >= 0 && daysLeft <= EXPIRING_DAYS_THRESHOLD) return 'expiring';
   }
 
-  // Unlimited packages never go "low" — only expire
+  // Unlimited packages never go "low"/"depleted" — only expire
   if (client.pkgUnlimited) return 'active';
 
+  if ((client.pkgSessions ?? 0) <= 0) return 'depleted';
   if ((client.pkgSessions ?? 0) <= LOW_SESSIONS_THRESHOLD) return 'low';
 
   return 'active';
@@ -38,6 +39,7 @@ export function statusLabel(status) {
     'frozen':     'Frozen',
     'expired':    'Expired',
     'low':        'Low Sessions',
+    'depleted':   'No Sessions Left',
     'expiring':   'Expiring Soon',
     'active':     'Active',
   }[status] || status;
@@ -48,6 +50,7 @@ export function statusColors(status) {
   switch (status) {
     case 'active':     return { bg: '#EEF3E6', fg: '#4E6A2E' };
     case 'low':        return { bg: '#FBEFE3', fg: '#A0673A' };
+    case 'depleted':   return { bg: '#F5DDDD', fg: '#8C3A3A' };
     case 'expiring':   return { bg: '#FBEFE3', fg: '#A0673A' };
     case 'expired':    return { bg: '#F5DDDD', fg: '#8C3A3A' };
     case 'frozen':     return { bg: '#E3EAF3', fg: '#3A5A8C' };

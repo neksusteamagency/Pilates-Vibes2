@@ -14,7 +14,7 @@ import {
 import { db } from '../../../firebase/config';
 import { formatPhone } from '../../../utils/phone';
 import { formatDateLong, formatTime } from '../../../utils/dates';
-import { statusLabel, statusColors } from '../../../utils/status';
+import { computeClientStatus, statusLabel, statusColors } from '../../../utils/status';
 import { buildWhatsAppLink, msgPaymentReminder, msgLowSessions } from '../../../utils/whatsapp';
 import { PRESET_PACKAGES } from '../../../utils/packages';
 
@@ -52,7 +52,7 @@ export default function ClientDrawer({ client, open, onClose, ops, customPackage
               color: T.primary, fontSize: '1.6rem', lineHeight: 1.1,
             }}>{client.name}</h2>
             <div style={{ marginTop: 6, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-              <Badge {...statusColors(client.status)}>{statusLabel(client.status)}</Badge>
+               <Badge {...statusColors(computeClientStatus(client))}>{statusLabel(computeClientStatus(client))}</Badge>
               {client.pkg && (
                 <span style={{ fontSize: '0.84rem', color: T.muted }}>
                   {client.pkg} • {client.pkgUnlimited ? 'unlimited' : `${client.pkgSessions} left`}
@@ -80,7 +80,7 @@ export default function ClientDrawer({ client, open, onClose, ops, customPackage
 
         <div style={{ flex: 1, overflowY: 'auto', padding: '0 24px 24px' }}>
           {tab === 'profile' && <ProfileTab client={client} ops={ops} />}
-          {tab === 'history' && <HistoryTab client={client} />}
+          {tab === 'history' && <HistoryTab client={client} ops={ops} />}
           {tab === 'actions' && <ActionsTab client={client} ops={ops} customPackages={customPackages} />}
         </div>
       </aside>
@@ -238,107 +238,188 @@ function Mini({ label, children }) {
 }
 
 // ── History tab ────────────────────────────────────────────────
-function HistoryTab({ client }) {
-  const [bookings, setBookings] = useState([]);
-  const [loading,  setLoading]  = useState(true);
+function HistoryTab({ client, ops }) {
+  const [bookings,    setBookings]    = useState([]);
+  const [attendance,  setAttendance]  = useState([]);
+  const [pkgHistory,  setPkgHistory]  = useState([]);
+  const [adjustments, setAdjustments] = useState([]);
+  const [loading,     setLoading]     = useState(true);
 
   useEffect(() => {
-    const q = query(
-      collection(db, 'bookings'),
-      where('clientId', '==', client.id),
-      orderBy('date', 'desc'),
-    );
-    const unsub = onSnapshot(q,
+    setLoading(true);
+    const unsubs = [];
+
+    unsubs.push(onSnapshot(
+      query(collection(db, 'bookings'), where('clientId', '==', client.id), orderBy('date', 'desc')),
       snap => { setBookings(snap.docs.map(d => ({ id: d.id, ...d.data() }))); setLoading(false); },
       err  => { console.error(err); setLoading(false); }
-    );
-    return () => unsub();
+    ));
+
+    unsubs.push(onSnapshot(
+      query(collection(db, 'attendance'), where('clientId', '==', client.id)),
+      snap => setAttendance(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
+      err  => console.error(err)
+    ));
+
+    unsubs.push(onSnapshot(
+      query(collection(db, 'clients', client.id, 'packageHistory'), orderBy('archivedAt', 'desc')),
+      snap => setPkgHistory(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
+      err  => console.error(err)
+    ));
+
+        unsubs.push(onSnapshot(
+      query(collection(db, 'clients', client.id, 'sessionAdjustments'), orderBy('createdAt', 'desc')),
+      snap => setAdjustments(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
+      err  => console.error(err)
+    ));
+
+    return () => unsubs.forEach(u => u());
   }, [client.id]);
 
-  // Group bookings by month 'YYYY-MM'
-  const grouped = useMemo(() => {
-    const map = {};
-    bookings.forEach(b => {
-      const month = b.date?.slice(0, 7);
-      if (!month) return;
-      if (!map[month]) map[month] = [];
-      map[month].push(b);
-    });
-    // Sort months descending
-    return Object.entries(map).sort((a, b) => b[0].localeCompare(a[0]));
-  }, [bookings]);
+  const attendanceByBooking = useMemo(() => {
+    const m = {};
+    attendance.forEach(a => { m[a.bookingId] = a; });
+    return m;
+  }, [attendance]);
 
-  function monthLabel(ym) {
-    const [y, m] = ym.split('-').map(Number);
-    return new Date(y, m - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  function bookingStatus(b) {
+    if (b.status === 'cancelled') return 'cancelled';
+    const att = attendanceByBooking[b.id];
+    if (att?.status === 'no-show')  return 'no-show';
+    if (att?.status === 'attended') return 'attended';
+    return 'upcoming';
   }
 
-  if (loading)          return <div style={{ color: T.faint, padding: 20 }}>Loading…</div>;
-  if (!bookings.length) return <EmptyState icon={Calendar} title="No bookings yet" />;
+  function statusBadge(s) {
+    switch (s) {
+      case 'attended':  return <Badge bg="#EEF3E6" fg={T.olive}>Attended</Badge>;
+      case 'no-show':   return <Badge bg="#FBEFE3" fg={T.warm}>No-show</Badge>;
+      case 'cancelled': return <Badge bg="#F5DDDD" fg={T.danger}>Cancelled</Badge>;
+      default:          return <Badge bg="#E3EAF3" fg="#3A5A8C">Upcoming</Badge>;
+    }
+  }
+
+      async function handleMarkHistoryPaid(g, method) {
+    if (!confirm(`Mark $${g.price ?? 0} as paid via ${method}? This logs income in Finance.`)) return;
+    try {
+      await ops.markPackageHistoryPaid(client.id, g.instanceId, method);
+      toast.success('Marked as paid.');
+    } catch (e) { toast.error(e.message); }
+  }
+
+  // Group bookings by the specific package they were made under —
+  // current package + every archived (renewed/removed) package.
+  const groups = useMemo(() => {
+    const list = [];
+
+    if (client.pkg) {
+      list.push({
+        instanceId:    client.currentPackageInstanceId || null,
+        pkg:           client.pkg,
+        purchaseDate:  client.pkgPurchaseDate,
+        expiry:        client.pkgExpiry,
+        paid:          client.pkgPaid,
+        price:         client.pkgPrice,
+        paymentMethod: client.pkgPaymentMethod,
+        totalSessions: client.pkgTotalSessions,
+        unlimited:     client.pkgUnlimited,
+        current:       true,
+      });
+    }
+
+    pkgHistory.forEach(h => {
+      list.push({
+        instanceId:    h.id,
+        pkg:           h.pkg,
+        purchaseDate:  h.pkgPurchaseDate,
+        expiry:        h.pkgExpiry,
+        paid:          h.pkgPaid,
+        price:         h.pkgPrice,
+        paymentMethod: h.pkgPaymentMethod,
+        totalSessions: h.pkgTotalSessions,
+        unlimited:     h.pkgUnlimited,
+        endReason:     h.endReason,
+        current:       false,
+      });
+    });
+
+    const withBookings = list.map(g => ({
+      ...g,
+      bookings: bookings
+        .filter(b => g.instanceId && b.packageInstanceId === g.instanceId)
+        .sort((a, b2) => b2.date.localeCompare(a.date)),
+    }));
+
+    // Bookings made before this feature existed (no package link at all)
+    const knownIds = new Set(list.map(g => g.instanceId).filter(Boolean));
+    const legacyBookings = bookings
+      .filter(b => !b.packageInstanceId || !knownIds.has(b.packageInstanceId))
+      .sort((a, b2) => b2.date.localeCompare(a.date));
+
+    if (legacyBookings.length) {
+      withBookings.push({ instanceId: null, pkg: 'Before package tracking', legacy: true, bookings: legacyBookings });
+    }
+
+     return withBookings.filter(g => g.bookings.length > 0 || g.current || (!g.legacy && !g.paid));
+  }, [client, pkgHistory, bookings]);
+
+  if (loading) return <div style={{ color: T.faint, padding: 20 }}>Loading…</div>;
+  if (!bookings.length && !pkgHistory.length) return <EmptyState icon={Calendar} title="No bookings yet" />;
 
   return (
     <div style={{ paddingTop: 8 }}>
-
-
-
-      {/* Month groups */}
-      {grouped.map(([month, monthBookings]) => {
-        const confirmed  = monthBookings.filter(b => b.status !== 'cancelled');
-        const cancelled  = monthBookings.filter(b => b.status === 'cancelled');
-        return (
-          <div key={month} style={{ marginBottom: 22 }}>
-
-            {/* Month header */}
-            <div style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              marginBottom: 8,
-              paddingBottom: 6,
-              borderBottom: `2px solid ${T.border}`,
-            }}>
-              <div style={{
-                fontFamily: T.serif,
-                fontSize: '1.15rem',
-                fontWeight: 500,
-                color: T.primary,
-              }}>
-                {monthLabel(month)}
+      {groups.map(g => (
+        <div key={g.instanceId || 'legacy'} style={{ marginBottom: 24 }}>
+          <div style={{
+            display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
+            marginBottom: 8, paddingBottom: 8, borderBottom: `2px solid ${T.border}`, gap: 10, flexWrap: 'wrap',
+          }}>
+            <div>
+              <div style={{ fontFamily: T.serif, fontSize: '1.1rem', fontWeight: 500, color: T.primary }}>
+                {g.pkg}
+                {g.current && <span style={{ marginLeft: 8, fontSize: '0.72rem', color: T.olive, fontWeight: 500 }}>CURRENT</span>}
               </div>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <Badge bg="#EEF3E6" fg={T.olive}>
-                  {confirmed.length} session{confirmed.length === 1 ? '' : 's'}
+              {!g.legacy && (
+                <div style={{ fontSize: '0.78rem', color: T.faint, marginTop: 2 }}>
+                  {g.purchaseDate ? `Started ${g.purchaseDate}` : 'Start date unknown'}
+                  {g.expiry ? ` · expires ${g.expiry}` : ''}
+                  {' · '}{g.unlimited ? 'unlimited sessions' : `${g.totalSessions ?? '—'} sessions`}
+                </div>
+              )}
+            </div>
+            {!g.legacy && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                <Badge bg={g.paid ? '#EEF3E6' : '#F5DDDD'} fg={g.paid ? T.olive : T.danger}>
+                  {g.paid ? `Paid${g.paymentMethod ? ' · ' + g.paymentMethod : ''}` : 'Unpaid'}
                 </Badge>
-                {cancelled.length > 0 && (
-                  <Badge bg="#F5DDDD" fg={T.danger}>
-                    {cancelled.length} cancelled
-                  </Badge>
+                {!g.paid && !g.current && g.instanceId && (
+                  <>
+                    <Button size="sm" variant="secondary" onClick={() => handleMarkHistoryPaid(g, 'Cash')}>Mark paid (Cash)</Button>
+                    <Button size="sm" variant="secondary" onClick={() => handleMarkHistoryPaid(g, 'Whish')}>Mark paid (Whish)</Button>
+                  </>
                 )}
               </div>
-            </div>
+            )}
+          </div>
 
-            {/* Bookings in this month */}
+          {g.bookings.length === 0 ? (
+            <div style={{ fontSize: '0.84rem', color: T.faint, padding: '6px 2px' }}>No sessions booked under this package yet.</div>
+          ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              {monthBookings.map(b => {
-                const isCancelled = b.status === 'cancelled';
+              {g.bookings.map(b => {
+                const st  = bookingStatus(b);
+                const dim = st === 'cancelled';
                 return (
                   <div key={b.id} style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    padding: '10px 12px',
-                    borderRadius: 8,
-                    background: isCancelled ? 'transparent' : T.bg,
-                    opacity: isCancelled ? 0.45 : 1,
-                    gap: 10,
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    padding: '10px 12px', borderRadius: 8,
+                    background: dim ? 'transparent' : T.bg,
+                    opacity: dim ? 0.5 : 1, gap: 10,
                   }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{
-                        fontSize: '0.9rem',
-                        fontWeight: isCancelled ? 400 : 500,
-                        color: T.text,
-                        textDecoration: isCancelled ? 'line-through' : 'none',
-                        marginBottom: 2,
+                        fontSize: '0.9rem', fontWeight: dim ? 400 : 500, color: T.text,
+                        textDecoration: dim ? 'line-through' : 'none', marginBottom: 2,
                       }}>
                         {b.className || b.name || 'Class'}
                       </div>
@@ -346,16 +427,40 @@ function HistoryTab({ client }) {
                         {formatDateLong(b.date)} · {formatTime(b.time)}
                       </div>
                     </div>
-                    {isCancelled && (
-                      <Badge bg="#F5DDDD" fg={T.danger}>Cancelled</Badge>
-                    )}
+                    {statusBadge(st)}
                   </div>
                 );
               })}
             </div>
+          )}
+        </div>
+      ))}
+            {adjustments.length > 0 && (
+        <div style={{ marginBottom: 24 }}>
+          <div style={{
+            fontFamily: T.serif, fontSize: '1.1rem', fontWeight: 500, color: T.primary,
+            marginBottom: 8, paddingBottom: 8, borderBottom: `2px solid ${T.border}`,
+          }}>
+            Manual Adjustments
           </div>
-        );
-      })}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {adjustments.map(a => (
+              <div key={a.id} style={{ padding: '10px 12px', background: T.bg, borderRadius: 8 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
+                  <span style={{ fontSize: '0.88rem', fontWeight: 500, color: T.text }}>
+                    {a.type === 'conduct' ? 'Session conducted (-1)' : 'Session returned (+1)'}
+                    {a.pkg ? ` · ${a.pkg}` : ''}
+                  </span>
+                  <span style={{ fontSize: '0.76rem', color: T.faint, whiteSpace: 'nowrap' }}>
+                    {a.createdAt?.toDate ? a.createdAt.toDate().toLocaleDateString() : ''}
+                  </span>
+                </div>
+                {a.note && <div style={{ fontSize: '0.82rem', color: T.muted, marginTop: 3 }}>{a.note}</div>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -365,6 +470,7 @@ function ActionsTab({ client, ops, customPackages }) {
   const [pkgModal,      setPkgModal]      = useState(false);
   const [discountInput, setDiscountInput] = useState(client.pkgDiscount ?? 0);
   const [expiryInput,   setExpiryInput]   = useState(client.pkgExpiry || '');
+  const [sessionNote,   setSessionNote]   = useState('');
 
 
   useEffect(() => { setDiscountInput(client.pkgDiscount ?? 0); }, [client.id, client.pkgDiscount]);
@@ -489,11 +595,30 @@ async function handleMarkPaid() {
             Conducting a session manually deducts one outside of a class booking.
             Returning adds one back (use to reverse mistakes).
           </p>
+          <Field label="Note (optional)">
+            <Input
+              value={sessionNote}
+              onChange={e => setSessionNote(e.target.value)}
+              placeholder="e.g. Makeup session for missed class"
+            />
+          </Field>
           <Row>
-            <Button variant="secondary" icon={Minus} onClick={() => wrap('Session deducted.', () => ops.conductSession(client))} disabled={client.pkgUnlimited}>
+            <Button
+              variant="secondary" icon={Minus} disabled={client.pkgUnlimited}
+              onClick={async () => {
+                await wrap('Session deducted.', () => ops.conductSession(client, sessionNote));
+                setSessionNote('');
+              }}
+            >
               Conduct session (-1)
             </Button>
-            <Button variant="secondary" icon={Plus} onClick={() => wrap('Session returned.', () => ops.returnSession(client))} disabled={client.pkgUnlimited}>
+            <Button
+              variant="secondary" icon={Plus} disabled={client.pkgUnlimited}
+              onClick={async () => {
+                await wrap('Session returned.', () => ops.returnSession(client, sessionNote));
+                setSessionNote('');
+              }}
+            >
               Return session (+1)
             </Button>
           </Row>
