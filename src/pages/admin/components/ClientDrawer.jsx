@@ -13,7 +13,7 @@ import {
 } from '../../../components/ui';
 import { db } from '../../../firebase/config';
 import { formatPhone } from '../../../utils/phone';
-import { formatDateLong, formatTime } from '../../../utils/dates';
+import { formatDateLong, formatTime, isClassStarted } from '../../../utils/dates';
 import { computeClientStatus, statusLabel, statusColors } from '../../../utils/status';
 import { buildWhatsAppLink, msgPaymentReminder, msgLowSessions } from '../../../utils/whatsapp';
 import { PRESET_PACKAGES } from '../../../utils/packages';
@@ -282,22 +282,25 @@ function HistoryTab({ client, ops }) {
     return m;
   }, [attendance]);
 
-  function bookingStatus(b) {
-    if (b.status === 'cancelled') return 'cancelled';
-    const att = attendanceByBooking[b.id];
-    if (att?.status === 'no-show')  return 'no-show';
-    if (att?.status === 'attended') return 'attended';
-    return 'upcoming';
-  }
+ // in bookingStatus:
+function bookingStatus(b) {
+  if (b.status === 'cancelled') return 'cancelled';
+  const att = attendanceByBooking[b.id];
+  if (att?.status === 'no-show')  return 'no-show';
+  if (att?.status === 'attended') return 'attended';
+  return isClassStarted(b.date, b.time) ? 'unmarked' : 'upcoming';
+}
 
-  function statusBadge(s) {
-    switch (s) {
-      case 'attended':  return <Badge bg="#EEF3E6" fg={T.olive}>Attended</Badge>;
-      case 'no-show':   return <Badge bg="#FBEFE3" fg={T.warm}>No-show</Badge>;
-      case 'cancelled': return <Badge bg="#F5DDDD" fg={T.danger}>Cancelled</Badge>;
-      default:          return <Badge bg="#E3EAF3" fg="#3A5A8C">Upcoming</Badge>;
-    }
+  // in statusBadge, add a case:
+function statusBadge(s) {
+  switch (s) {
+    case 'attended':  return <Badge bg="#EEF3E6" fg={T.olive}>Attended</Badge>;
+    case 'no-show':   return <Badge bg="#FBEFE3" fg={T.warm}>No-show</Badge>;
+    case 'cancelled': return <Badge bg="#F5DDDD" fg={T.danger}>Cancelled</Badge>;
+    case 'unmarked':  return <Badge bg="#EFE9DD" fg={T.muted}>Not marked</Badge>;
+    default:          return <Badge bg="#E3EAF3" fg="#3A5A8C">Upcoming</Badge>;
   }
+}
 
       async function handleMarkHistoryPaid(g, method) {
     if (!confirm(`Mark $${g.price ?? 0} as paid via ${method}? This logs income in Finance.`)) return;
