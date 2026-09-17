@@ -15,7 +15,7 @@ import { db } from '../../../firebase/config';
 import { formatPhone } from '../../../utils/phone';
 import { formatDateLong, formatTime, isClassStarted } from '../../../utils/dates';
 import { computeClientStatus, statusLabel, statusColors } from '../../../utils/status';
-import { buildWhatsAppLink, msgPaymentReminder, msgLowSessions } from '../../../utils/whatsapp';
+import { buildWhatsAppLink, msgPaymentReminder, msgLowSessions, msgThankYouPayment } from '../../../utils/whatsapp';
 import { PRESET_PACKAGES } from '../../../utils/packages';
 
 export default function ClientDrawer({ client, open, onClose, ops, customPackages = [] }) {
@@ -372,7 +372,7 @@ function statusBadge(s) {
   return (
     <div style={{ paddingTop: 8 }}>
       {groups.map(g => (
-        <div key={g.instanceId || 'legacy'} style={{ marginBottom: 24 }}>
+        <div key={g.legacy ? 'legacy' : (g.instanceId || 'current-untracked')} style={{ marginBottom: 24 }}>
           <div style={{
             display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
             marginBottom: 8, paddingBottom: 8, borderBottom: `2px solid ${T.border}`, gap: 10, flexWrap: 'wrap',
@@ -498,6 +498,10 @@ async function handleMarkPaid() {
     }
     if (!confirm(`Mark $${client.pkgPrice ?? 0} as paid via ${method}? This logs income in Finance.`)) return;
     await wrap('Marked as paid. Income logged.', () => ops.markPackagePaid(client, method));
+
+    if (client.phone && confirm(`Send ${client.name} a thank-you WhatsApp message?`)) {
+      window.open(waLink(msgThankYouPayment({ clientName: client.name, pkg: client.pkg })), '_blank');
+    }
   }
 
   const waLink = (msg) => buildWhatsAppLink(client.phone, msg);
@@ -648,7 +652,7 @@ async function handleMarkPaid() {
                 Send payment reminder
               </Button>
             )}
-            {client.status === 'low' && (
+            {['low', 'depleted'].includes(computeClientStatus(client)) && (
               <Button
                 variant="secondary" icon={MessageCircle}
                 onClick={() => window.open(waLink(msgLowSessions({ clientName: client.name, sessionsLeft: client.pkgSessions })), '_blank')}

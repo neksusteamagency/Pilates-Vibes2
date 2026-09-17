@@ -56,7 +56,8 @@ export async function logTrainerPayment({ trainer, amount, method, date, descrip
     method,
     date,
     month:       date.slice(0, 7),
-    description: description?.trim() || `Payment to ${trainer.name}`,
-    createdAt:   serverTimestamp(),
+    description: description?.trim()
+      ? `Payment to ${trainer.name} — ${description.trim()}`
+      : `Payment to ${trainer.name}`,    createdAt:   serverTimestamp(),
   });
 }

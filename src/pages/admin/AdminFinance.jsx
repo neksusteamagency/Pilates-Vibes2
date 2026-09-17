@@ -3,10 +3,11 @@ import { Plus, X, TrendingUp, TrendingDown, DollarSign, ChevronLeft, ChevronRigh
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { useExpenses } from '../../hooks/useExpenses';
 import { usePOSSales, usePOSProducts } from '../../hooks/usePOS';
+import { useTrainers } from '../../hooks/useTrainers';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 
-const EXPENSE_CATEGORIES = ['Trainer Payment','Rent','Equipment','generator','edl','internet','concierge','cleaning','Marketing','Other','POS Product'];
+const EXPENSE_CATEGORIES = ['Trainer Payment','Rent','Equipment','generator','internet','concierge','cleaning','Marketing','Other','POS Product'];
 const CATEGORY_COLORS    = { 
   'Trainer Payment':'#7C8C5E', 
   'Rent':'#A0673A', 
@@ -221,16 +222,18 @@ function EditEntryModal({ entry, onClose, onSave, onSaveProduct, isIncome, produ
 }
 
 // ── Log Expense Modal ──────────────────────────────────────────
-function LogExpenseModal({ onClose, addExpense, products, addProduct, restockProduct }) {
+function LogExpenseModal({ onClose, addExpense, products, addProduct, restockProduct, trainers = [] }) {
   const [form, setForm] = useState({
     category:'Rent', description:'', amount:'', method:'Cash', date:'',
     isAdvance:false, advanceMonths:1,
     selectedProduct:'', quantity:'', unitCost:'', sellingPrice:'', lowStock:'5',
 productName:'', productEmoji:'📦', productCategory:'Drinks', emojiOpen:false,
+    trainerId:'',
   });
   const [saving, setSaving] = useState(false);
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
   const isPOS = form.category === 'POS Product';
+  const isTrainerPayment = form.category === 'Trainer Payment';
 
   async function handleSave() {
     if (!form.date) return toast.error('Date is required.');
@@ -245,8 +248,23 @@ productName:'', productEmoji:'📦', productCategory:'Drinks', emojiOpen:false,
         const qty = Number(form.quantity), cost = Number(form.unitCost), totalCost = qty * cost;
         entries.push({ category:'POS Product', description:`Purchased ${qty} × ${productName}`, amount:totalCost, method:form.method, date:form.date, isAdvance:false, isAllocated:false, isLumpSum:false, isPOSPurchase:true, originalPaymentDate:form.date, totalAdvanceAmount:totalCost });
         const existingProduct = products.find(p => p.name.toLowerCase() === productName.toLowerCase());
-        if (existingProduct) await restockProduct(existingProduct.id, qty);
-        else await addProduct({ name:productName, category:form.productCategory||'Drinks', price:Number(form.sellingPrice), stock:qty, lowStock:Number(form.lowStock)||5, emoji:form.productEmoji||'📦' });
+        if (existingProduct) await restockProduct(existingProduct.id, qty, cost);
+        else await addProduct({ name:productName, category:form.productCategory||'Drinks', price:Number(form.sellingPrice), stock:qty, lowStock:Number(form.lowStock)||5, emoji:form.productEmoji||'📦', cost });
+      } else if (isTrainerPayment) {
+        if (!form.trainerId) return toast.error('Select a trainer.');
+        if (!form.amount || isNaN(form.amount)) return toast.error('Enter a valid amount.');
+        const trainer = trainers.find(t => t.id === form.trainerId);
+        const trainerName = trainer?.name || 'Unknown trainer';
+        entries.push({
+          category: 'Trainer Payment',
+          description: form.description.trim()
+            ? `Payment to ${trainerName} — ${form.description.trim()}`
+            : `Payment to ${trainerName}`,
+          amount: Number(form.amount), method: form.method, date: form.date,
+          isAdvance:false, isLumpSum:false, isAllocated:false,
+          originalPaymentDate: form.date, totalAdvanceAmount: Number(form.amount),
+          trainerId: form.trainerId, trainerName,
+        });
       } else if (form.isAdvance && form.category === 'Rent') {
         const totalAmount = Number(form.amount) * form.advanceMonths;
         entries.push({ category:form.category, description:`${form.description} (Advance ${form.advanceMonths} months)`, amount:totalAmount, method:form.method, date:form.date, isAdvance:true, isLumpSum:true, isAllocated:false, originalPaymentDate:form.date, totalAdvanceAmount:totalAmount });
@@ -281,7 +299,23 @@ productName:'', productEmoji:'📦', productCategory:'Drinks', emojiOpen:false,
             </select>
           </Field>
 
-          {!isPOS && form.category !== 'Rent' && (
+          {isTrainerPayment && (
+            <>
+              <Field label="Trainer">
+                <select style={inp} value={form.trainerId} onChange={e => set('trainerId', e.target.value)}>
+                  <option value="">-- Select trainer --</option>
+                  {trainers.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
+              </Field>
+              <Field label="Note (optional)"><input style={inp} placeholder="e.g. July sessions" value={form.description} onChange={e => set('description', e.target.value)} /></Field>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+                <Field label="Amount (USD)"><input style={inp} type="number" placeholder="0.00" value={form.amount} onChange={e => set('amount', e.target.value)} /></Field>
+                <Field label="Date"><input style={inp} type="date" value={form.date} onChange={e => set('date', e.target.value)} /></Field>
+              </div>
+            </>
+          )}
+
+          {!isPOS && !isTrainerPayment && form.category !== 'Rent' && (
             <>
               <Field label="Description"><input style={inp} placeholder="e.g. Office supplies" value={form.description} onChange={e => set('description', e.target.value)} /></Field>
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
@@ -458,7 +492,8 @@ export default function AdminFinance() {
 const [currentMonth, setCurrentMonth] = useState(format(new Date(), 'yyyy-MM'));
   const { expenses, loading, fetchByMonth, addExpense, updateExpense, removeExpense, getMonthlyExpensesForMonth, getActualExpensesForMonth } = useExpenses();
   const { products, addProduct, restockProduct, updateProduct } = usePOSProducts();
-  const { fetchSalesByRange, totalRevenue: posIncomeValue } = usePOSSales();
+  const { fetchSalesByRange, totalRevenue: posIncomeValue, totalCost: posCostValue, totalProfit: posProfitValue } = usePOSSales();
+  const { trainers } = useTrainers();
 
   // Compute last day of the selected month so February etc. don't break
   function monthEndDate(ym) {
@@ -486,7 +521,7 @@ const [currentMonth, setCurrentMonth] = useState(format(new Date(), 'yyyy-MM'));
   const totalIncome     = incomeItems.reduce((s, e) => s + Math.abs(e.amount || 0), 0);
   const monthlyExpenses = getMonthlyExpensesForMonth(expenses, currentMonth);
   const actualExpenses  = getActualExpensesForMonth(expenses, currentMonth);
-  const profit          = totalIncome + posIncomeValue - actualExpenses;
+  const profit          = totalIncome + posProfitValue - actualExpenses;
   const expenseItems    = expenses.filter(e => !e.isIncome);
 
 
@@ -515,7 +550,7 @@ const [currentMonth, setCurrentMonth] = useState(format(new Date(), 'yyyy-MM'));
     return { month: format(d, 'MMM'), income: 0, expenses: 0 };
   });
   if (chartData.length > 0) {
-    chartData[chartData.length-1].income   = totalIncome + posIncomeValue;
+    chartData[chartData.length-1].income   = totalIncome + posProfitValue;
     chartData[chartData.length-1].expenses = actualExpenses;
   }
 
@@ -579,10 +614,10 @@ return (
           <div style={{ display:'grid', gridTemplateColumns:'repeat(5,1fr)', gap:14, marginBottom:22 }} className="fin-resp">
             {[
               { label:'Service Income',   value:`$${totalIncome.toLocaleString()}`,      sub: format(new Date(),'MMMM yyyy'),    icon:TrendingUp,  color:'#7C8C5E', bg:'#EEF3E6' },
-              { label:'POS Income',       value:`$${posIncomeValue.toLocaleString()}`,   sub:'Retail sales this month',          icon:ShoppingBag, color:'#A0673A', bg:'#F5F1E0' },
+              { label:'POS Income',       value:`$${posIncomeValue.toLocaleString()}`,   sub:`Cost $${posCostValue.toLocaleString()} · Profit $${posProfitValue.toLocaleString()}`, icon:ShoppingBag, color:'#A0673A', bg:'#F5F1E0' },
               { label:'Monthly Expenses', value:`$${monthlyExpenses.toLocaleString()}`,  sub:'Cash paid out this month',         icon:TrendingDown,color:'#8C3A3A', bg:'#F7EDED' },
               { label:'Actual Expenses',  value:`$${actualExpenses.toLocaleString()}`,   sub:'Operational costs only — excl. inventory & advances', icon:DollarSign,  color:'#3D2314', bg:'#F0EAE3' },
-              { label:'Profit',           value:`$${profit.toLocaleString()}`,           sub:'Based on actual expenses',         icon:TrendingUp,  color: profit>=0?'#4E6A2E':'#8C3A3A', bg: profit>=0?'#EEF3E6':'#F7EDED' },
+              { label:'Profit',           value:`$${profit.toLocaleString()}`,           sub:'Service + POS profit, minus actual expenses', icon:TrendingUp,  color: profit>=0?'#4E6A2E':'#8C3A3A', bg: profit>=0?'#EEF3E6':'#F7EDED' },
             ].map(k => (
               <div key={k.label} style={{ background:'#FAF7F2', borderRadius:14, padding:20, border:'1px solid #E0D5C1', boxShadow:'0 2px 16px rgba(61,35,20,0.10)' }}>
                 <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:12 }}>
@@ -626,12 +661,13 @@ return (
           <div className="fin-income-kpi" style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:14 }}>
             {[
               { label:'Service Income', value:`$${totalIncome.toLocaleString()}`,                  color:'#7C8C5E', bg:'#EEF3E6' },
-              { label:'POS Income',     value:`$${posIncomeValue.toLocaleString()}`,               color:'#A0673A', bg:'#F5F1E0' },
+              { label:'POS Income',     value:`$${posIncomeValue.toLocaleString()}`,               color:'#A0673A', bg:'#F5F1E0', sub:`Cost $${posCostValue.toLocaleString()} · Profit $${posProfitValue.toLocaleString()}` },
               { label:'Total Income',   value:`$${(totalIncome+posIncomeValue).toLocaleString()}`, color:'#3D2314', bg:'#F0EAE3' },
             ].map(k => (
               <div key={k.label} style={{ background:'#FAF7F2', borderRadius:12, padding:18, border:'1px solid #E0D5C1', boxShadow:'0 2px 12px rgba(61,35,20,0.08)' }}>
                 <div style={{ fontSize:'0.72rem', textTransform:'uppercase', letterSpacing:'0.1em', color:'#9C8470', marginBottom:8 }}>{k.label}</div>
                 <div style={{ fontFamily:"'Cormorant Garant',serif", fontSize:'1.9rem', fontWeight:500, color:k.color }}>{k.value}</div>
+                {k.sub && <div style={{ fontSize:'0.72rem', color:'#9C8470', marginTop:4 }}>{k.sub}</div>}
               </div>
             ))}
           </div>
@@ -830,7 +866,7 @@ return (
         </div>
       )}
 
-      {showExpModal && <LogExpenseModal onClose={() => setShowExpModal(false)} addExpense={addExpense} products={products} addProduct={addProduct} restockProduct={restockProduct} />}
+      {showExpModal && <LogExpenseModal onClose={() => setShowExpModal(false)} addExpense={addExpense} products={products} addProduct={addProduct} restockProduct={restockProduct} trainers={trainers} />}
       {showIncModal && <LogIncomeModal  onClose={() => setShowIncModal(false)}  addExpense={addExpense} />}
       {editingEntry  && <EditEntryModal entry={editingEntry} isIncome={editIsIncome} onClose={() => setEditingEntry(null)} onSave={handleUpdate} onSaveProduct={updateProduct} products={products} />}
 

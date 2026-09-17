@@ -58,3 +58,9 @@ export function msgPaymentReminder({ clientName, amount }) {
 
 — ${STUDIO_NAME}`;
 }
+
+export function msgThankYouPayment({ clientName, pkg }) {
+  return `Hi ${clientName}, thank you for your payment${pkg ? ` for your ${pkg}` : ''}! We appreciate you 🩷 See you in class soon.
+
+— ${STUDIO_NAME}`;
+}

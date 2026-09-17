@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { db } from '../firebase/config';
 import {
-  collection, onSnapshot, doc,
+  collection, onSnapshot, doc, getDoc,
   addDoc, updateDoc, deleteDoc,
   getDocs, query, orderBy, where,
   serverTimestamp, increment,
@@ -44,12 +44,16 @@ export function usePOSProducts() {
     await deleteDoc(doc(db, 'pos_products', id));
   }
 
-  // Restock: increment stock by qty
-  async function restockProduct(id, qty) {
-    await updateDoc(doc(db, 'pos_products', id), {
-      stock:     increment(qty),
-      updatedAt: serverTimestamp(),
-    });
+  // Restock: increment stock by qty. `cost` is optional — when provided,
+  // it updates the product's tracked unit cost (used for profit calc on
+  // future sales). Existing callers that only pass (id, qty) keep working
+  // exactly as before; cost simply won't change.
+  async function restockProduct(id, qty, cost) {
+    const updates = { stock: increment(qty), updatedAt: serverTimestamp() };
+    if (cost !== undefined && cost !== null && !isNaN(cost)) {
+      updates.cost = Number(cost);
+    }
+    await updateDoc(doc(db, 'pos_products', id), updates);
   }
 
   // Deduct stock after a sale
@@ -138,10 +142,28 @@ export function usePOSSales() {
   // items = [{ productId, name, qty, price }]
   // method: 'cash' | 'free'
   // date:   'YYYY-MM-DD'
+  //
+  // Each item's current product cost is looked up and snapshotted onto the
+  // sale record at the moment of sale — this keeps profit calculations
+  // historically accurate even if a product's cost changes later (e.g. a
+  // future restock at a different price won't retroactively change what
+  // last month's sales are considered to have cost).
   async function recordSale({ items, total, method, date }) {
     const month = date.slice(0, 7); // store month for easy monthly queries
+
+    const itemsWithCost = await Promise.all(items.map(async (item) => {
+      try {
+        const snap = await getDoc(doc(db, 'pos_products', item.productId));
+        const cost = snap.exists() ? (snap.data().cost || 0) : 0;
+        return { ...item, cost };
+      } catch (err) {
+        console.error('recordSale: cost lookup failed for', item.productId, err);
+        return { ...item, cost: 0 };
+      }
+    }));
+
     const saleRef = await addDoc(collection(db, 'pos_sales'), {
-      items,
+      items: itemsWithCost,
       total: method === 'free' ? 0 : total,
       method,
       date,
@@ -163,9 +185,19 @@ export function usePOSSales() {
 
   const freeSales = sales.filter(s => s.method === 'free').length;
 
+  // Cost of goods sold — counted for ALL sales, including free/comped ones,
+  // since giving an item away still consumes real inventory that cost money.
+  const totalCost = sales.reduce(
+    (s, sale) => s + sale.items.reduce((a, i) => a + (i.cost || 0) * i.qty, 0), 0
+  );
+
+  // True profit: revenue minus the cost of what was actually sold this
+  // period (not what was purchased/restocked this period).
+  const totalProfit = totalRevenue - totalCost;
+
   return {
     sales, loading, error,
     fetchSalesByDate, fetchSalesByMonth, fetchSalesByRange, recordSale,
-    totalRevenue, totalItems, freeSales,
+    totalRevenue, totalItems, freeSales, totalCost, totalProfit,
   };
 }
