@@ -7,9 +7,7 @@ import {
   sendPasswordResetEmail,
 } from 'firebase/auth';
 import {
-  doc, getDoc, setDoc, updateDoc,
-  collection, query, where, getDocs,
-  serverTimestamp,
+  doc, getDoc, collection, runTransaction, serverTimestamp,
 } from 'firebase/firestore';
 import { auth, db } from '../firebase/config';
 import { normalizePhone } from '../utils/phone';
@@ -18,13 +16,12 @@ const AuthContext = createContext(null);
 export const useAuth = () => useContext(AuthContext);
 
 export function AuthProvider({ children }) {
-  const [currentUser, setCurrentUser] = useState(null); // firebase user
-  const [role,        setRole]        = useState(null); // 'admin' | 'trainer' | 'client'
-  const [profile,     setProfile]     = useState(null); // client or trainer profile doc
+  const [currentUser, setCurrentUser] = useState(null);
+  const [role,        setRole]        = useState(null);
+  const [profile,     setProfile]     = useState(null);
   const [profileId,   setProfileId]   = useState(null);
   const [loading,     setLoading]     = useState(true);
 
-  // Lets us trigger a manual profile re-fetch after signup
   const [refreshKey, setRefreshKey] = useState(0);
   const refreshProfile = () => setRefreshKey(k => k + 1);
 
@@ -35,8 +32,6 @@ export function AuthProvider({ children }) {
   }, []);
 
   // ── 2. Load role + profile whenever the auth user changes ─────
-  // Uses a cancellation flag so a stale fetch can't overwrite fresh state
-  // (important after signup where we refresh manually).
   useEffect(() => {
     let cancelled = false;
 
@@ -57,7 +52,6 @@ export function AuthProvider({ children }) {
         if (cancelled) return;
 
         if (!userSnap.exists()) {
-          // Happens momentarily during signup before user doc exists.
           setRole(null); setProfile(null); setProfileId(null);
           return;
         }
@@ -88,77 +82,87 @@ export function AuthProvider({ children }) {
     return () => { cancelled = true; };
   }, [currentUser, refreshKey]);
 
-  // ── Sign up a new client (with phone-match linking) ────────────
+  // ── Sign up a new client (atomic phone-match linking) ──────────
   async function signupClient({ name, email, phone, password }) {
     const canonicalPhone = normalizePhone(phone);
     if (!canonicalPhone) throw new Error('Please enter a valid phone number.');
 
-    // Create the auth user (also signs them in)
     const cred = await createUserWithEmailAndPassword(auth, email, password);
     const uid  = cred.user.uid;
 
-    // Check for an existing client profile with this phone
-    const q = query(collection(db, 'clients'), where('phone', '==', canonicalPhone));
-    const snap = await getDocs(q);
+    try {
+      let linked   = false;
+      let clientId = null;
 
-    let clientId;
-    let linked = false;
+      await runTransaction(db, async (tx) => {
+        linked   = false;
+        clientId = null;
 
-    if (!snap.empty) {
-      // Link to the first matching profile
-      const existing = snap.docs[0];
-      clientId = existing.id;
-      await updateDoc(doc(db, 'clients', clientId), {
-        userId:    uid,
-        email:     email || existing.data().email || '',
-        // Keep existing name unless the profile didn't have one
-        name:      existing.data().name || name,
-        updatedAt: serverTimestamp(),
+        const idxRef = doc(db, 'phoneIndex', canonicalPhone);
+        const idx    = await tx.get(idxRef);
+
+        if (idx.exists()) {
+          // Phone already known → link to that profile
+          const data = idx.data();
+          if (data.userId && data.userId !== uid) {
+            throw new Error('This phone number already has an account. Please sign in instead.');
+          }
+          clientId = data.clientId;
+          tx.update(doc(db, 'clients', clientId), {
+            userId:    uid,
+            email:     email || '',
+            updatedAt: serverTimestamp(),
+          });
+          tx.update(idxRef, { userId: uid });
+          linked = true;
+        } else {
+          // New phone → brand-new client profile
+          const newRef = doc(collection(db, 'clients'));
+          clientId = newRef.id;
+          tx.set(newRef, {
+            name,
+            phone:    canonicalPhone,
+            phoneRaw: phone,
+            email:    email || '',
+            birthday: '2000-01-01',
+            notes:    '',
+            pkg:                            null,
+            pkgSessions:                    0,
+            pkgTotalSessions:               0,
+            pkgExpiry:                      null,
+            pkgPurchaseDate:                null,
+            pkgPrice:                       0,
+            pkgDiscount:                    0,
+            pkgPaid:                        false,
+            pkgPaymentMethod:               null,
+            pkgBookingsBeforeVerification:  0,
+            pkgUnlimited:                   false,
+            isFrozen:    false,
+            freezeStart: null,
+            freezeEnd:   null,
+            status:      'no-package',
+            userId:      uid,
+            createdAt:   serverTimestamp(),
+            updatedAt:   serverTimestamp(),
+          });
+          tx.set(idxRef, { clientId, userId: uid });
+        }
+
+        tx.set(doc(db, 'users', uid), {
+          role:      'client',
+          profileId: clientId,
+          email:     email || '',
+          createdAt: serverTimestamp(),
+        });
       });
-      linked = true;
-    } else {
-      // Brand-new client doc
-      const newRef = doc(collection(db, 'clients'));
-      clientId = newRef.id;
-      await setDoc(newRef, {
-        name,
-        phone:    canonicalPhone,
-        phoneRaw: phone,
-        email:    email || '',
-        birthday: '2000-01-01',
-        notes:    '',
-        pkg:                            null,
-        pkgSessions:                    0,
-        pkgTotalSessions:               0,
-        pkgExpiry:                      null,
-        pkgPurchaseDate:                null,
-        pkgPrice:                       0,
-        pkgDiscount:                    0,
-        pkgPaid:                        false,
-        pkgPaymentMethod:               null,
-        pkgBookingsBeforeVerification:  0,
-        isFrozen:    false,
-        freezeStart: null,
-        freezeEnd:   null,
-        status:      'no-package',
-        userId:      uid,
-        createdAt:   serverTimestamp(),
-        updatedAt:   serverTimestamp(),
-      });
+
+      refreshProfile();
+      return { linked, clientId };
+    } catch (err) {
+      // Don't leave an orphan login behind if linking failed
+      await cred.user.delete().catch(() => {});
+      throw err;
     }
-
-    // Create the user/role mapping doc
-    await setDoc(doc(db, 'users', uid), {
-      role:      'client',
-      profileId: clientId,
-      email:     email || '',
-      createdAt: serverTimestamp(),
-    });
-
-    // Force a fresh profile load now that the user doc exists
-    refreshProfile();
-
-    return { linked, clientId };
   }
 
   async function login(email, password)  { return signInWithEmailAndPassword(auth, email, password); }

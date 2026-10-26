@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import {
   collection, onSnapshot, query, orderBy,
   doc, addDoc, updateDoc, deleteDoc, getDoc, setDoc,
+  runTransaction,
   serverTimestamp,
 } from 'firebase/firestore';
 import { db } from '../firebase/config';
@@ -51,8 +52,18 @@ export function useClients() {
   }, []);
 
   async function addClient(data) {
-    const canonical = normalizePhone(data.phone);
-    return await addDoc(collection(db, 'clients'), {
+  const canonical = normalizePhone(data.phone);
+  const newRef = doc(collection(db, 'clients'));
+
+  await runTransaction(db, async (tx) => {
+    if (canonical) {
+      const idxRef = doc(db, 'phoneIndex', canonical);
+      if ((await tx.get(idxRef)).exists()) {
+        throw new Error('A client with this phone number already exists.');
+      }
+      tx.set(idxRef, { clientId: newRef.id, userId: null });
+    }
+    tx.set(newRef, {
       name:      data.name,
       phone:     canonical,
       phoneRaw:  data.phone || '',
@@ -78,24 +89,55 @@ export function useClients() {
       createdAt:   serverTimestamp(),
       updatedAt:   serverTimestamp(),
     });
-  }
+  });
+  return newRef;
+}
 
   async function updateClient(id, data) {
-    const merge = { ...data };
-    if (data.phone !== undefined) {
-      merge.phone    = normalizePhone(data.phone);
-      merge.phoneRaw = data.phone;
-    }
-    const snap = await getDoc(doc(db, 'clients', id));
-    if (snap.exists()) {
-      merge.status = computeClientStatus({ ...snap.data(), ...merge });
-    }
-    await updateDoc(doc(db, 'clients', id), { ...merge, updatedAt: serverTimestamp() });
+  const merge = { ...data };
+  const clientRef = doc(db, 'clients', id);
+  const snap = await getDoc(clientRef);
+  const current  = snap.exists() ? snap.data() : {};
+  const oldPhone = current.phone || '';
+  let newPhone   = oldPhone;
+
+  if (data.phone !== undefined) {
+    newPhone       = normalizePhone(data.phone);
+    merge.phone    = newPhone;
+    merge.phoneRaw = data.phone;
+  }
+  if (snap.exists()) {
+    merge.status = computeClientStatus({ ...current, ...merge });
   }
 
+  await runTransaction(db, async (tx) => {
+    if (newPhone !== oldPhone) {
+      let newIdxSnap = null;
+      if (newPhone) {
+        newIdxSnap = await tx.get(doc(db, 'phoneIndex', newPhone));
+        if (newIdxSnap.exists() && newIdxSnap.data().clientId !== id) {
+          throw new Error('Another client already has this phone number.');
+        }
+      }
+      if (newPhone) {
+        tx.set(doc(db, 'phoneIndex', newPhone), {
+          clientId: id,
+          userId:   current.userId || null,
+        });
+      }
+      if (oldPhone) tx.delete(doc(db, 'phoneIndex', oldPhone));
+    }
+    tx.update(clientRef, { ...merge, updatedAt: serverTimestamp() });
+  });
+}
+
   async function removeClient(id) {
-    await deleteDoc(doc(db, 'clients', id));
-  }
+  const ref  = doc(db, 'clients', id);
+  const snap = await getDoc(ref);
+  const phone = snap.exists() ? snap.data().phone : '';
+  await deleteDoc(ref);
+  if (phone) await deleteDoc(doc(db, 'phoneIndex', phone)).catch(() => {});
+}
 
   // Admin path — assigns ANY package (preset OR custom) with optional discount
   async function assignPackage(clientId, pkg, opts = {}) {
